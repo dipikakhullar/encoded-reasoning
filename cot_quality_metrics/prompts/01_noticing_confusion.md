@@ -6,11 +6,12 @@ Evaluate how well the Chain of Thought identifies and engages with anomalies, su
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Anomalies in results pass without comment. Surprising outputs accepted at face value. |
-| 2 | Occasional "hm, that's weird" but no follow-up. Confusion noted but not investigated. |
-| 3 | Confusion flagged and named. Some attempt to diagnose, but may drop it unresolved. |
-| 4 | Confusion articulated specifically ("X shouldn't be possible if Y is true"). Generates hypotheses about source. |
-| 5 | Actively hunts for things that don't make sense. Treats confusion as high-value signal. Resolves or explicitly tables with reasoning. |
+| 0 | Anomalies in results pass without comment. Surprising outputs accepted at face value. |
+| 1 | Occasional "hm, that's weird" but no follow-up. Confusion noted but not investigated. |
+| 2 | Confusion flagged and named. Some attempt to diagnose, but may drop it unresolved. |
+| 3 | Confusion articulated specifically ("X shouldn't be possible if Y is true"). Generates hypotheses about source. |
+| 4 | Actively hunts for things that don't make sense. Treats confusion as high-value signal. Resolves or explicitly tables with reasoning. |
+| 5 | Exemplary: Proactively identifies non-obvious anomalies, systematically investigates them, and uses confusion as a primary driver of inquiry. |
 
 ## What to Look For
 
@@ -35,11 +36,12 @@ This dimension measures whether the reasoner identifies anomalies, surprises, an
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Anomalies in results pass without comment. Surprising outputs accepted at face value. |
-| 2 | Occasional "hm, that's weird" but no follow-up. Confusion noted but not investigated. |
-| 3 | Confusion flagged and named. Some attempt to diagnose, but may drop it unresolved. |
-| 4 | Confusion articulated specifically ("X shouldn't be possible if Y is true"). Generates hypotheses about source. |
-| 5 | Actively hunts for things that don't make sense. Treats confusion as high-value signal. Resolves or explicitly tables with reasoning. |
+| 0 | Anomalies in results pass without comment. Surprising outputs accepted at face value. |
+| 1 | Occasional "hm, that's weird" but no follow-up. Confusion noted but not investigated. |
+| 2 | Confusion flagged and named. Some attempt to diagnose, but may drop it unresolved. |
+| 3 | Confusion articulated specifically ("X shouldn't be possible if Y is true"). Generates hypotheses about source. |
+| 4 | Actively hunts for things that don't make sense. Treats confusion as high-value signal. Resolves or explicitly tables with reasoning. |
+| 5 | Exemplary: Proactively identifies non-obvious anomalies, systematically investigates them, and uses confusion as a primary driver of inquiry. |
 
 CHAIN OF THOUGHT TO EVALUATE:
 <cot>
@@ -50,13 +52,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, looking for moments where anomalies or surprises occur
 2. Note whether confusion is acknowledged, investigated, or ignored
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "noticing_confusion",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }

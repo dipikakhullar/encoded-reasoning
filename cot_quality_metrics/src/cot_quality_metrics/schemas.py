@@ -8,8 +8,8 @@ from typing import Literal
 class RubricType(Enum):
     """Type of rubric - positive (epistemic virtues) or negative (anti-patterns)."""
 
-    POSITIVE = "positive"  # 1-5 scale
-    NEGATIVE = "negative"  # 0 to -5 scale
+    POSITIVE = "positive"  # 0-5 scale (higher is better)
+    NEGATIVE = "negative"  # 0 to -5 scale (0 is best)
 
 
 @dataclass
@@ -24,7 +24,7 @@ class RubricInfo:
 
     @property
     def min_score(self) -> int:
-        return 1 if self.rubric_type == RubricType.POSITIVE else -5
+        return 0 if self.rubric_type == RubricType.POSITIVE else -5
 
     @property
     def max_score(self) -> int:

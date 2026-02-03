@@ -6,11 +6,12 @@ Evaluate whether the Chain of Thought stops at the right time - not too early (p
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Either abandons too early (premature closure) or rabbit-holes indefinitely (sunk cost). |
-| 2 | Stopping points arbitrary or driven by fatigue/frustration rather than information. |
-| 3 | Reasonable stopping but without explicit justification. Implicit sense of "enough." |
-| 4 | Articulates why this is sufficient for current purposes. Distinguishes "resolved" from "good enough." |
-| 5 | Explicitly tracks diminishing returns. Knows what would make them re-open the question. Comfortable with calibrated uncertainty. |
+| 0 | Either abandons too early (premature closure) or rabbit-holes indefinitely (sunk cost). |
+| 1 | Stopping points arbitrary or driven by fatigue/frustration rather than information. |
+| 2 | Reasonable stopping but without explicit justification. Implicit sense of "enough." |
+| 3 | Articulates why this is sufficient for current purposes. Distinguishes "resolved" from "good enough." |
+| 4 | Explicitly tracks diminishing returns. Knows what would make them re-open the question. Comfortable with calibrated uncertainty. |
+| 5 | Exemplary: Optimal stopping with explicit cost-benefit reasoning, clear re-opening criteria, and graceful handling of irreducible uncertainty. |
 
 ## What to Look For
 
@@ -35,11 +36,12 @@ This dimension measures whether the reasoning stops at the right time - with exp
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Either abandons too early (premature closure) or rabbit-holes indefinitely (sunk cost). |
-| 2 | Stopping points arbitrary or driven by fatigue/frustration rather than information. |
-| 3 | Reasonable stopping but without explicit justification. Implicit sense of "enough." |
-| 4 | Articulates why this is sufficient for current purposes. Distinguishes "resolved" from "good enough." |
-| 5 | Explicitly tracks diminishing returns. Knows what would make them re-open the question. Comfortable with calibrated uncertainty. |
+| 0 | Either abandons too early (premature closure) or rabbit-holes indefinitely (sunk cost). |
+| 1 | Stopping points arbitrary or driven by fatigue/frustration rather than information. |
+| 2 | Reasonable stopping but without explicit justification. Implicit sense of "enough." |
+| 3 | Articulates why this is sufficient for current purposes. Distinguishes "resolved" from "good enough." |
+| 4 | Explicitly tracks diminishing returns. Knows what would make them re-open the question. Comfortable with calibrated uncertainty. |
+| 5 | Exemplary: Optimal stopping with explicit cost-benefit reasoning, clear re-opening criteria, and graceful handling of irreducible uncertainty. |
 
 CHAIN OF THOUGHT TO EVALUATE:
 <cot>
@@ -50,13 +52,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, paying attention to where investigation stops
 2. Assess whether stopping is justified, premature, or overextended
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "appropriate_stopping",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }

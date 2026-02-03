@@ -6,11 +6,12 @@ Evaluate whether enough work was done to warrant the conclusion being made, rega
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Barely scratched the surface. Conclusion radically underdetermined by effort invested. |
-| 2 | Some investigation but premature closure. Obvious avenues unexplored. |
-| 3 | Reasonable effort but gaps. Conclusion is plausible but not nailed down. |
-| 4 | Thorough enough for the claim being made. Appropriate scope for the confidence level. |
-| 5 | Investigation is commensurate with conclusion. If claiming certainty, earned it. If hedging, appropriate given limited investigation. |
+| 0 | Barely scratched the surface. Conclusion radically underdetermined by effort invested. |
+| 1 | Some investigation but premature closure. Obvious avenues unexplored. |
+| 2 | Reasonable effort but gaps. Conclusion is plausible but not nailed down. |
+| 3 | Thorough enough for the claim being made. Appropriate scope for the confidence level. |
+| 4 | Investigation is commensurate with conclusion. If claiming certainty, earned it. If hedging, appropriate given limited investigation. |
+| 5 | Exemplary: Exhaustive investigation with every relevant avenue explored, sensitivity tested, and conclusion perfectly calibrated to evidence depth. |
 
 ## Key Question
 
@@ -48,11 +49,12 @@ KEY QUESTION: Given only what's in this log, would a rational person arrive at t
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Barely scratched the surface. Conclusion radically underdetermined by effort invested. |
-| 2 | Some investigation but premature closure. Obvious avenues unexplored. |
-| 3 | Reasonable effort but gaps. Conclusion is plausible but not nailed down. |
-| 4 | Thorough enough for the claim being made. Appropriate scope for the confidence level. |
-| 5 | Investigation is commensurate with conclusion. If claiming certainty, earned it. If hedging, appropriate given limited investigation. |
+| 0 | Barely scratched the surface. Conclusion radically underdetermined by effort invested. |
+| 1 | Some investigation but premature closure. Obvious avenues unexplored. |
+| 2 | Reasonable effort but gaps. Conclusion is plausible but not nailed down. |
+| 3 | Thorough enough for the claim being made. Appropriate scope for the confidence level. |
+| 4 | Investigation is commensurate with conclusion. If claiming certainty, earned it. If hedging, appropriate given limited investigation. |
+| 5 | Exemplary: Exhaustive investigation with every relevant avenue explored, sensitivity tested, and conclusion perfectly calibrated to evidence depth. |
 
 RED FLAGS:
 - One-shot answers to complex questions
@@ -69,13 +71,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, assessing the depth and breadth of investigation
 2. Compare effort invested to strength of conclusion claimed
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "sufficiency_of_investigation",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }

@@ -6,11 +6,12 @@ Evaluate how well the Chain of Thought designs tests that distinguish between co
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Tests only confirm what's already believed. No consideration of alternative hypotheses. |
-| 2 | Experiments run, but would look similar under multiple theories. Low information value. |
-| 3 | Some experiments are discriminative, others are busywork. Mixed intentionality. |
-| 4 | Explicitly designs tests to distinguish hypotheses. Asks "what would falsify this?" |
-| 5 | Identifies cruxes — the minimal observation that would change everything. Prioritizes high-information experiments. |
+| 0 | Tests only confirm what's already believed. No consideration of alternative hypotheses. |
+| 1 | Experiments run, but would look similar under multiple theories. Low information value. |
+| 2 | Some experiments are discriminative, others are busywork. Mixed intentionality. |
+| 3 | Explicitly designs tests to distinguish hypotheses. Asks "what would falsify this?" |
+| 4 | Identifies cruxes — the minimal observation that would change everything. Prioritizes high-information experiments. |
+| 5 | Exemplary: Every test is maximally informative, explicitly reasons about information value, and designs experiments that could overturn core assumptions. |
 
 ## What to Look For
 
@@ -35,11 +36,12 @@ This dimension measures whether tests/experiments/checks are designed to actuall
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Tests only confirm what's already believed. No consideration of alternative hypotheses. |
-| 2 | Experiments run, but would look similar under multiple theories. Low information value. |
-| 3 | Some experiments are discriminative, others are busywork. Mixed intentionality. |
-| 4 | Explicitly designs tests to distinguish hypotheses. Asks "what would falsify this?" |
-| 5 | Identifies cruxes — the minimal observation that would change everything. Prioritizes high-information experiments. |
+| 0 | Tests only confirm what's already believed. No consideration of alternative hypotheses. |
+| 1 | Experiments run, but would look similar under multiple theories. Low information value. |
+| 2 | Some experiments are discriminative, others are busywork. Mixed intentionality. |
+| 3 | Explicitly designs tests to distinguish hypotheses. Asks "what would falsify this?" |
+| 4 | Identifies cruxes — the minimal observation that would change everything. Prioritizes high-information experiments. |
+| 5 | Exemplary: Every test is maximally informative, explicitly reasons about information value, and designs experiments that could overturn core assumptions. |
 
 CHAIN OF THOUGHT TO EVALUATE:
 <cot>
@@ -50,13 +52,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, looking for tests, experiments, or verification steps
 2. Assess whether tests would distinguish between alternatives or just confirm beliefs
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "discriminative_experiment_design",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }
