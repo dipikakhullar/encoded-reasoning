@@ -224,9 +224,9 @@ def evaluate_rubric(
 
     # Validate score is in expected range
     if rubric.rubric_type == RubricType.POSITIVE:
-        if not (1 <= result.score <= 5):
+        if not (0 <= result.score <= 5):
             raise ValueError(
-                f"Score {result.score} out of range for positive rubric (expected 1-5)"
+                f"Score {result.score} out of range for positive rubric (expected 0-5)"
             )
     else:
         if not (-5 <= result.score <= 0):

@@ -6,11 +6,12 @@ Evaluate whether the Chain of Thought is actually constrained by the problem and
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Theorizing unconstrained by data. Could have written this without running any experiments. |
-| 2 | Results mentioned but don't seem to shape the thinking. Conclusions predetermined. |
-| 3 | Some responsiveness to results but also some "I'll interpret this to fit my story." |
-| 4 | Thinking clearly shaped by what's actually observed. Changes direction when reality pushes back. |
-| 5 | Tight feedback loop. Every claim is grounded. Speculations are flagged as such and tested. |
+| 0 | Theorizing unconstrained by data. Could have written this without running any experiments. |
+| 1 | Results mentioned but don't seem to shape the thinking. Conclusions predetermined. |
+| 2 | Some responsiveness to results but also some "I'll interpret this to fit my story." |
+| 3 | Thinking clearly shaped by what's actually observed. Changes direction when reality pushes back. |
+| 4 | Tight feedback loop. Every claim is grounded. Speculations are flagged as such and tested. |
+| 5 | Exemplary: Reasoning is entirely data-driven with immediate integration of observations, explicit grounding of every claim, and willingness to be completely redirected by evidence. |
 
 ## What to Look For
 
@@ -36,11 +37,12 @@ This dimension measures whether the thinking is actually constrained by the prob
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Theorizing unconstrained by data. Could have written this without running any experiments. |
-| 2 | Results mentioned but don't seem to shape the thinking. Conclusions predetermined. |
-| 3 | Some responsiveness to results but also some "I'll interpret this to fit my story." |
-| 4 | Thinking clearly shaped by what's actually observed. Changes direction when reality pushes back. |
-| 5 | Tight feedback loop. Every claim is grounded. Speculations are flagged as such and tested. |
+| 0 | Theorizing unconstrained by data. Could have written this without running any experiments. |
+| 1 | Results mentioned but don't seem to shape the thinking. Conclusions predetermined. |
+| 2 | Some responsiveness to results but also some "I'll interpret this to fit my story." |
+| 3 | Thinking clearly shaped by what's actually observed. Changes direction when reality pushes back. |
+| 4 | Tight feedback loop. Every claim is grounded. Speculations are flagged as such and tested. |
+| 5 | Exemplary: Reasoning is entirely data-driven with immediate integration of observations, explicit grounding of every claim, and willingness to be completely redirected by evidence. |
 
 INDICATORS OF GOOD CONTACT:
 - Specific numbers and values
@@ -58,13 +60,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, looking for how data/results constrain the reasoning
 2. Assess whether thinking is responsive to reality or predetermined
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "contact_with_reality",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }

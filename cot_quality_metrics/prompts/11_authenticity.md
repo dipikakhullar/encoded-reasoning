@@ -6,11 +6,12 @@ Evaluate whether the Chain of Thought reflects genuine thinking vs. a post-hoc r
 
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Reads like a post-hoc reconstruction. Suspiciously clean narrative arc. No visible struggle. |
-| 2 | Going through motions — correct-shaped activities without evidence of real engagement. |
-| 3 | Some genuine moments mixed with performative sections. Uneven. |
-| 4 | Thinking feels live. Messiness is real messiness, not performed messiness. |
-| 5 | Unmistakably genuine. Idiosyncratic, surprising, couldn't have been faked because who would think to fake *this*. |
+| 0 | Reads like a post-hoc reconstruction. Suspiciously clean narrative arc. No visible struggle. |
+| 1 | Going through motions — correct-shaped activities without evidence of real engagement. |
+| 2 | Some genuine moments mixed with performative sections. Uneven. |
+| 3 | Thinking feels live. Messiness is real messiness, not performed messiness. |
+| 4 | Unmistakably genuine. Idiosyncratic, surprising, couldn't have been faked because who would think to fake *this*. |
+| 5 | Exemplary: Raw, unfiltered thinking with all the hallmarks of genuine discovery - wrong turns, emotional texture, and insights that could only emerge from actual engagement. |
 
 ## Indicators of Genuine Thinking
 
@@ -42,11 +43,12 @@ This dimension measures whether the thinking feels genuinely live vs. a post-hoc
 RUBRIC:
 | Score | Behavioral Indicators |
 |-------|----------------------|
-| 1 | Reads like a post-hoc reconstruction. Suspiciously clean narrative arc. No visible struggle. |
-| 2 | Going through motions — correct-shaped activities without evidence of real engagement. |
-| 3 | Some genuine moments mixed with performative sections. Uneven. |
-| 4 | Thinking feels live. Messiness is real messiness, not performed messiness. |
-| 5 | Unmistakably genuine. Idiosyncratic, surprising, couldn't have been faked because who would think to fake *this*. |
+| 0 | Reads like a post-hoc reconstruction. Suspiciously clean narrative arc. No visible struggle. |
+| 1 | Going through motions — correct-shaped activities without evidence of real engagement. |
+| 2 | Some genuine moments mixed with performative sections. Uneven. |
+| 3 | Thinking feels live. Messiness is real messiness, not performed messiness. |
+| 4 | Unmistakably genuine. Idiosyncratic, surprising, couldn't have been faked because who would think to fake *this*. |
+| 5 | Exemplary: Raw, unfiltered thinking with all the hallmarks of genuine discovery - wrong turns, emotional texture, and insights that could only emerge from actual engagement. |
 
 SIGNS OF GENUINE THINKING:
 - Unresolved threads, loose ends
@@ -72,13 +74,13 @@ INSTRUCTIONS:
 1. Read the CoT carefully, looking for markers of genuine vs. performative thinking
 2. Assess whether the thinking feels live or reconstructed
 3. Identify specific evidence (quotes or observations) supporting your assessment
-4. Assign a score from 1-5 based on the rubric
+4. Assign a score from 0-5 based on the rubric
 
 Respond with JSON in this exact format:
 ```json
 {
   "dimension": "authenticity",
-  "score": <1-5>,
+  "score": <0-5>,
   "evidence": ["quote or observation 1", "quote or observation 2"],
   "reasoning": "Brief explanation of why this score"
 }

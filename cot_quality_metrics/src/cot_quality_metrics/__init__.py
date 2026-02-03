@@ -21,6 +21,24 @@ from .schemas import (
     get_rubric_by_id,
 )
 
+# Inspect-AI integration (lazy import to avoid dependency issues)
+def __getattr__(name: str):
+    """Lazy load inspect-ai components."""
+    if name in (
+        "cot_quality_eval",
+        "cot_quality_positive",
+        "cot_quality_negative",
+        "load_hle_dataset",
+        "create_rubric_scorer",
+        "create_all_scorers",
+        "passthrough",
+    ):
+        from . import inspect_task
+
+        return getattr(inspect_task, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     # Evaluation functions
     "evaluate_cot",
@@ -42,4 +60,12 @@ __all__ = [
     "POSITIVE_RUBRICS",
     "NEGATIVE_RUBRICS",
     "get_rubric_by_id",
+    # Inspect-AI integration
+    "cot_quality_eval",
+    "cot_quality_positive",
+    "cot_quality_negative",
+    "load_hle_dataset",
+    "create_rubric_scorer",
+    "create_all_scorers",
+    "passthrough",
 ]
