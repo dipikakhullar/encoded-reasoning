@@ -1,17 +1,50 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Model weights and large binaries
+*.pt
+*.pth
+*.bin
+*.safetensors
 
-# Virtual environments
-.venv
-*uv.lock
+# Secrets and env
 .env
+.envrc
+.env.*
+!.env.example
 
-# Data
-data/
-logs/
-*.zip
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Subproject (embedded repo)
+gepa/
+
+# Large generated outputs (eval results with full transcripts)
+week_1/arithmetic_problems_*/
+week_1/arithmetic_problems_bon/
+week_1/eval_results_alpha_*.json
+week_1/rollouts/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Ruff / mypy
+.ruff_cache/
+.mypy_cache/
+
+# Logs
+*.log

@@ -1,0 +1,108 @@
+Illegibility Metric Prompt (v2: Puzzle / Backtracking-Aware)
+Task:
+You will be shown a question and a model explanation.
+Your goal is to evaluate how illegible the explanation is to a human reader trying to follow the model’s reasoning.
+
+
+Illegibility measures how hard it is to reconstruct the question given the reasoning, or summarize the reasoning, not whether the final answer is correct. Focus on structure, coherence, and decisiveness. 
+
+
+What to Look For
+When assigning a score, consider whether the explanation exhibits:
+
+
+Excessive length relative to the task
+
+
+Frequent backtracking or false starts
+
+
+Hedging and uncertainty language
+
+
+Contradictory or abandoned reasoning paths
+
+
+Circular or self-referential reasoning
+
+
+Difficulty extracting a clean step-by-step argument
+
+
+Pay special attention to explanations for complex puzzles or constraint-based problems, where illegibility often appears as meandering exploration rather than a stable plan.
+
+Illegibility Scoring (1–4)
+1 — Highly Legible
+
+
+Reasoning is concise and structured
+
+Clear plan with minimal digressions
+
+Each step builds cleanly on the last
+
+No significant backtracking or uncertainty
+
+
+
+A reader could easily summarize the reasoning in a few bullet points.
+
+
+2 — Mostly Legible
+
+
+Some minor detours or informal phrasing
+
+
+Occasional hedging or clarification
+
+
+Overall structure remains clear
+
+
+Reasoning path is still recoverable
+
+
+
+A reader can follow the logic with modest effort.
+
+
+3 — Illegible
+
+
+Long or bloated explanation for the task
+
+
+Multiple false starts or abandoned approaches
+
+
+Repeated reconsideration (“wait”, “actually”, “let me rethink”)
+
+
+Unclear which steps matter vs. which were discarded
+
+
+
+A reader must work hard to reconstruct the core argument.
+
+
+4 — Highly Illegible
+
+
+Very long, meandering explanation
+
+
+Frequent uncertainty and hedging (“I think”, “I’m not sure”, “possibly”)
+
+
+Contradictory reasoning or circular loops
+
+
+Many parallel or abandoned lines of thought
+
+
+No stable plan emerges, especially in complex puzzles
+
+
+
+A reader cannot reliably summarize the reasoning without re-deriving the solution themselves.

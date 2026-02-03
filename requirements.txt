@@ -1,0 +1,6 @@
+torch
+numpy
+scipy
+accelerate
+# Qwen3-VL: transformers from git (fixes AutoProcessor bug)
+transformers @ git+https://github.com/huggingface/transformers.git
