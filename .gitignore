@@ -11,6 +11,6 @@ wheels/
 *uv.lock
 
 # Data
-hle/
+data/
 logs/
 *.zip

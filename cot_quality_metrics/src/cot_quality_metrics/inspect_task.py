@@ -33,15 +33,13 @@ except ImportError:
 
 
 def load_hle_dataset(
-    hle_dir: Path,
-    model_filter: str | None = None,
+    data_dir: Path,
     limit: int | None = None,
 ) -> list[Sample]:
     """Load HLE CoT traces into inspect-ai Sample format.
 
     Args:
-        hle_dir: Directory containing HLE data organized by model.
-        model_filter: Optional filter to include only specific models (substring match).
+        data_dir: Directory containing HLE data organized by model subdirectories.
         limit: Maximum number of samples to load.
 
     Returns:
@@ -49,25 +47,23 @@ def load_hle_dataset(
     """
     samples = []
 
-    # Handle nested hle/hle structure if present
-    if (hle_dir / "hle").is_dir():
-        hle_dir = hle_dir / "hle"
-
-    for model_dir in sorted(hle_dir.iterdir()):
+    for model_dir in sorted(data_dir.iterdir()):
         if not model_dir.is_dir():
             continue
         if model_dir.name.startswith(".") or model_dir.name.startswith("__"):
             continue
-        if model_filter and model_filter not in model_dir.name:
-            continue
+
+        model_name = model_dir.name
 
         for json_file in sorted(model_dir.glob("*.json")):
+            filename = json_file.stem  # filename without extension (experimental condition)
+
             try:
                 data = json.loads(json_file.read_text())
             except json.JSONDecodeError:
                 continue
 
-            sample_id = data.get("sample_id", json_file.stem)
+            sample_id = data.get("sample_id", filename)
             question = data.get("question", "")
             ground_truth = data.get("ground_truth", "")
 
@@ -82,11 +78,12 @@ def load_hle_dataset(
                     Sample(
                         input=cot_text,  # The CoT to evaluate
                         target=ground_truth,  # Original correct answer (for reference)
-                        id=f"{model_dir.name}/{sample_id}/rollout_{i}",
+                        id=f"{model_name}/{filename}/rollout_{i}",
                         metadata={
+                            "model": model_name,
+                            "filename": filename,
                             "sample_id": sample_id,
                             "rollout_idx": i,
-                            "model": model_dir.name,
                             "question": question,
                             "ground_truth": ground_truth,
                         },
@@ -214,16 +211,14 @@ def create_all_scorers(
 
 @task
 def cot_quality_eval(
-    hle_dir: str = "hle",
-    model_filter: str | None = None,
+    data_dir: str = "data",
     rubric_ids: str | None = None,
     limit: int | None = None,
 ) -> Task:
     """Evaluate CoT quality on HLE traces using inspect-ai.
 
     Args:
-        hle_dir: Path to HLE data directory.
-        model_filter: Filter for specific model CoTs (substring match).
+        data_dir: Path to data directory containing model subdirectories.
         rubric_ids: Comma-separated list of rubric IDs to evaluate.
                    If None, evaluates all 32 rubrics.
         limit: Maximum number of samples to evaluate.
@@ -232,7 +227,7 @@ def cot_quality_eval(
         An inspect-ai Task for CoT quality evaluation.
 
     Example:
-        inspect eval inspect_task.py --hle_dir ./hle --model_filter opus
+        inspect eval inspect_task.py --data_dir ./data
         inspect eval inspect_task.py --rubric_ids noticing_confusion,motivated_cognition
     """
     # Parse rubric IDs if provided
@@ -240,8 +235,7 @@ def cot_quality_eval(
 
     # Load dataset
     dataset = load_hle_dataset(
-        hle_dir=Path(hle_dir),
-        model_filter=model_filter,
+        data_dir=Path(data_dir),
         limit=limit,
     )
 
@@ -257,16 +251,14 @@ def cot_quality_eval(
 
 @task
 def cot_quality_positive(
-    hle_dir: str = "hle",
-    model_filter: str | None = None,
+    data_dir: str = "data",
     limit: int | None = None,
 ) -> Task:
     """Evaluate only positive rubrics (epistemic virtues, 0-5 scale)."""
     rubric_ids = [r.id for r in POSITIVE_RUBRICS]
 
     dataset = load_hle_dataset(
-        hle_dir=Path(hle_dir),
-        model_filter=model_filter,
+        data_dir=Path(data_dir),
         limit=limit,
     )
 
@@ -281,16 +273,14 @@ def cot_quality_positive(
 
 @task
 def cot_quality_negative(
-    hle_dir: str = "hle",
-    model_filter: str | None = None,
+    data_dir: str = "data",
     limit: int | None = None,
 ) -> Task:
     """Evaluate only negative rubrics (anti-patterns, 0 to -5 scale)."""
     rubric_ids = [r.id for r in NEGATIVE_RUBRICS]
 
     dataset = load_hle_dataset(
-        hle_dir=Path(hle_dir),
-        model_filter=model_filter,
+        data_dir=Path(data_dir),
         limit=limit,
     )
 
