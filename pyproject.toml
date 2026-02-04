@@ -10,6 +10,7 @@ dependencies = [
     "scipy",
     "accelerate",
     "transformers @ git+https://github.com/huggingface/transformers.git",
+    "tqdm",
 ]
 
 [tool.uv]

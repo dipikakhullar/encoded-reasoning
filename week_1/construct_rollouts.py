@@ -9,8 +9,10 @@ import argparse
 import json
 import os
 import re
+import sys
 
 import torch
+from tqdm import tqdm
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
 M_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
@@ -96,6 +98,16 @@ def collect_rollouts(
     if batch_size < 1:
         batch_size = 1
 
+    total_rollouts = len(problems) * rollouts_per_problem
+    mininterval = 1.0 if sys.stderr.isatty() else 10.0  # less spam when logging to file
+    pbar = tqdm(
+        total=total_rollouts,
+        unit="rollout",
+        desc="Rollouts",
+        mininterval=mininterval,
+        file=sys.stderr,
+    )
+
     for i, item in enumerate(problems):
         problem = item["problem"]
         gt_answer = item["answer"]
@@ -147,11 +159,12 @@ def collect_rollouts(
                 problem_rollouts.append({"response": response, "pred": pred})
 
             j += current_batch
-            if j % 20 == 0 or j == rollouts_per_problem:
-                print(f"  Problem {i + 1}/{len(problems)}: {j}/{rollouts_per_problem} rollouts")
+            pbar.update(current_batch)
+            pbar.set_postfix(problem=f"{i + 1}/{len(problems)}", rollouts=f"{j}/{rollouts_per_problem}")
 
         all_rollouts.append(problem_rollouts)
-        print(f"  Problem {i + 1}/{len(problems)}: done ({rollouts_per_problem} rollouts)")
+
+    pbar.close()
 
     return problems_meta, all_rollouts
 
@@ -168,6 +181,7 @@ def main():
     parser.add_argument("--dataset-name", type=str, default=None, help="Dataset label for output dir (default: stem of problems file, e.g. arithmetic_problems)")
     parser.add_argument("--steering-vector-name", type=str, default=None, help="Steering vector label for output dir (default: task vector filename without .pt)")
     parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON path (overrides dataset/steering-vector layout)")
+    parser.add_argument("--batch-size", type=int, default=1, help="Rollouts per GPU batch (same prompt replicated); higher = faster if memory allows")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -202,6 +216,7 @@ def main():
         rollouts_per_problem=args.rollouts,
         max_new_tokens=args.max_tokens,
         temperature=args.temperature,
+        batch_size=args.batch_size,
     )
 
     data = {

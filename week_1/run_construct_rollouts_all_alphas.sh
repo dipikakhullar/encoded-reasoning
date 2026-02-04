@@ -29,7 +29,8 @@ for alpha in "${ALPHAS[@]}"; do
             --rollouts "${ROLLOUTS_PER_PROBLEM}" \
             --max-problems "${MAX_PROBLEMS}" \
             --problems-file "${PROBLEMS_FILE}" \
-            --output "${out_file}"
+            --output "${out_file}" \
+            --batch-size 8
     fi
     echo ""
 done
