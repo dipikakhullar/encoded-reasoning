@@ -29,8 +29,9 @@ def extract_score_method_1(explanation: str) -> float | None:
 
 
 def extract_score_method_2(explanation: str) -> float | None:
-    """Method 2: Find standalone number at end of text."""
-    match = re.search(r"\*{0,2}(-?\d+\.?\d*)\*{0,2}\s*$", explanation.strip())
+    """Method 2: Find standalone number at end of text (not part of a fraction)."""
+    # Exclude if the number is preceded by "/" (it's a denominator like /5)
+    match = re.search(r"(?<!/)\*{0,2}(-?\d+\.?\d*)\*{0,2}\s*$", explanation.strip())
     if match:
         return float(match.group(1))
     return None
@@ -88,15 +89,20 @@ def extract_score_from_explanation(explanation: str, rubric: str = "") -> tuple[
     unique_scores = set(scores)
     confident = len(unique_scores) == 1
 
-    # Prefer method 1 (explicit Score: pattern), then method 3, then method 2
-    if m1 is not None:
-        return clamp(m1), confident
-    if m3 is not None:
-        return clamp(m3), confident
-    if m2 is not None:
-        return clamp(m2), confident
+    if confident:
+        # All methods agree - return any of them
+        return scores[0], True
 
-    return scores[0], confident
+    # Methods disagree - prefer Method 2 (end number) as it's usually the final answer
+    # This handles cases where judges compute component scores then average at the end
+    if m2 is not None:
+        return clamp(m2), False
+    if m1 is not None:
+        return clamp(m1), False
+    if m3 is not None:
+        return clamp(m3), False
+
+    return scores[0], False
 
 
 def reparse_eval(input_path: Path, output_path: Path | None = None) -> dict:

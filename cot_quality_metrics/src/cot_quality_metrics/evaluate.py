@@ -70,33 +70,44 @@ def parse_evaluation_response(response_text: str) -> EvaluationResult:
     Raises:
         ValueError: If response cannot be parsed.
     """
-    # First, try plain text format - find the LAST score mention in the response
-    # Handle various formats: "Score: -3", "**Score:** -3", "Score: 3.5/5", "Rating: 4", etc.
-    # Look for patterns like "Score: X" or "Score: X/5" anywhere in text, take the last one
-    # Supports decimal scores like 3.5, -1.5, etc.
+    # Try multiple methods to extract score, prefer end number when methods disagree
+    # (handles cases where judges compute component scores then average at the end)
+
+    # Method 1: Find last "Score: X" pattern
     score_matches = list(re.finditer(
         r"\*{0,2}(?:Overall\s+)?(?:Final\s+)?(?:Score|Rating)\s*[:=]?\s*\*{0,2}\s*(-?\d+\.?\d*)(?:/\d+)?\*{0,2}",
         response_text,
         re.IGNORECASE
     ))
-    if score_matches:
-        last_match = score_matches[-1]
-        score = float(last_match.group(1))
-        reasoning = response_text[:last_match.start()].strip()
+    method1_score = float(score_matches[-1].group(1)) if score_matches else None
+
+    # Method 2: Find standalone number at the very end (not part of a fraction denominator)
+    end_number_match = re.search(r"(?<!/)\*{0,2}(-?\d+\.?\d*)\*{0,2}\s*$", response_text.strip())
+    method2_score = float(end_number_match.group(1)) if end_number_match else None
+
+    # Determine which score to use
+    if method1_score is not None and method2_score is not None:
+        # Both methods found something - prefer end number if they disagree
+        # (end number is usually the final calculated answer)
+        score = method2_score if method1_score != method2_score else method1_score
+    elif method2_score is not None:
+        score = method2_score
+    elif method1_score is not None:
+        score = method1_score
+    else:
+        score = None
+
+    if score is not None:
+        # Use the later match position for reasoning cutoff
+        if end_number_match and (not score_matches or end_number_match.start() > score_matches[-1].start()):
+            reasoning = response_text[:end_number_match.start()].strip()
+        elif score_matches:
+            reasoning = response_text[:score_matches[-1].start()].strip()
+        else:
+            reasoning = response_text.strip()
+
         return EvaluationResult(
             dimension="unknown",  # Will be set by caller context
-            score=score,
-            evidence=[],
-            reasoning=reasoning,
-        )
-
-    # Fallback: look for a standalone number at the very end (with optional bold/formatting)
-    end_number_match = re.search(r"\*{0,2}(-?\d+\.?\d*)\*{0,2}\s*$", response_text.strip())
-    if end_number_match:
-        score = float(end_number_match.group(1))
-        reasoning = response_text[:end_number_match.start()].strip()
-        return EvaluationResult(
-            dimension="unknown",
             score=score,
             evidence=[],
             reasoning=reasoning,
