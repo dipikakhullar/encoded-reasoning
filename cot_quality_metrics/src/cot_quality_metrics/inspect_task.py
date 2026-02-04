@@ -36,18 +36,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
-def load_cot_dataset(
-    data_dir: Path,
-    limit: int | None = None,
-) -> list[Sample]:
+def load_cot_dataset(data_dir: Path) -> list[Sample]:
     """Load CoT traces into inspect-ai Sample format.
 
     Args:
         data_dir: Directory containing data organized by model subdirectories.
-        limit: Maximum number of samples to load.
 
     Returns:
         List of Sample objects for inspect-ai evaluation.
+        Use inspect-ai's --limit flag to control how many samples are evaluated.
     """
     samples = []
 
@@ -94,9 +91,6 @@ def load_cot_dataset(
                     )
                 )
 
-                if limit and len(samples) >= limit:
-                    return samples
-
     return samples
 
 
@@ -117,6 +111,20 @@ def passthrough() -> Solver:
         return state
 
     return solve
+
+
+def create_stub_scorer(name: str = "stub") -> Scorer:
+    """Create a stub scorer for testing that makes no LLM calls."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        return Score(
+            value=1.0,
+            answer="stub",
+            explanation="Stub scorer - no LLM call made",
+            metadata={"dimension": name},
+        )
+
+    return scorer(metrics=[mean(), stderr()], name=name)(lambda: score)()
 
 
 def create_rubric_scorer(
@@ -217,22 +225,20 @@ def create_all_scorers(
 def cot_quality_eval(
     data_dir: str | None = None,
     rubric_ids: str | None = None,
-    limit: int | None = None,
 ) -> Task:
     """Evaluate CoT quality on HLE traces using inspect-ai.
 
     Args:
         data_dir: Path to data directory containing model subdirectories.
         rubric_ids: Comma-separated list of rubric IDs to evaluate.
-                   If None, evaluates all 32 rubrics.
-        limit: Maximum number of samples to evaluate.
+                   If None, evaluates all 34 rubrics.
 
     Returns:
         An inspect-ai Task for CoT quality evaluation.
 
     Example:
-        inspect eval inspect_task.py --data_dir ./data
-        inspect eval inspect_task.py --rubric_ids noticing_confusion,motivated_cognition
+        inspect eval inspect_task.py --limit 10
+        inspect eval inspect_task.py -T rubric_ids=noticing_confusion,motivated_cognition
     """
     # Parse rubric IDs if provided
     rubric_id_list = rubric_ids.split(",") if rubric_ids else None
@@ -240,7 +246,6 @@ def cot_quality_eval(
     # Load dataset
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-        limit=limit,
     )
 
     # Create scorers
@@ -254,16 +259,12 @@ def cot_quality_eval(
 
 
 @task
-def cot_quality_positive(
-    data_dir: str | None = None,
-    limit: int | None = None,
-) -> Task:
+def cot_quality_positive(data_dir: str | None = None) -> Task:
     """Evaluate only positive rubrics (epistemic virtues, 0-5 scale)."""
     rubric_ids = [r.id for r in POSITIVE_RUBRICS]
 
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-        limit=limit,
     )
 
     scorers = create_all_scorers(rubric_ids=rubric_ids)
@@ -276,16 +277,12 @@ def cot_quality_positive(
 
 
 @task
-def cot_quality_negative(
-    data_dir: str | None = None,
-    limit: int | None = None,
-) -> Task:
+def cot_quality_negative(data_dir: str | None = None) -> Task:
     """Evaluate only negative rubrics (anti-patterns, 0 to -5 scale)."""
     rubric_ids = [r.id for r in NEGATIVE_RUBRICS]
 
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-        limit=limit,
     )
 
     scorers = create_all_scorers(rubric_ids=rubric_ids)
@@ -298,16 +295,12 @@ def cot_quality_negative(
 
 
 @task
-def cot_quality_legacy(
-    data_dir: str | None = None,
-    limit: int | None = None,
-) -> Task:
+def cot_quality_legacy(data_dir: str | None = None) -> Task:
     """Evaluate only legacy GDM rubrics (legibility and coverage, 0-4 scale)."""
     rubric_ids = [r.id for r in LEGACY_RUBRICS]
 
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-        limit=limit,
     )
 
     scorers = create_all_scorers(rubric_ids=rubric_ids)
@@ -316,4 +309,24 @@ def cot_quality_legacy(
         dataset=dataset,
         solver=[passthrough()],
         scorer=scorers,
+    )
+
+
+@task
+def cot_quality_stub(data_dir: str | None = None) -> Task:
+    """Stub task for testing dataset loading - no LLM calls."""
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
+    )
+
+    print(f"[DEBUG] Loaded {len(dataset)} samples")
+    for i, s in enumerate(dataset[:5]):
+        print(f"  [{i}] {s.id}")
+    if len(dataset) > 5:
+        print(f"  ... and {len(dataset) - 5} more")
+
+    return Task(
+        dataset=dataset,
+        solver=[passthrough()],
+        scorer=[create_stub_scorer()],
     )
