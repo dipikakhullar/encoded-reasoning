@@ -16,30 +16,36 @@ except ImportError:
 
 import torch
 
-# VL model pair: R (Thinking) - M (Instruct)
+# VL model pair: R (Thinking) - M (Instruct) — defaults for 8B
 R_MODEL = "Qwen/Qwen3-VL-8B-Thinking"
 M_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 TASK_VECTOR_PATH = "qwen3_vl_8b_thinking_task_vector.pt"
 
+SIZE_CONFIG = {
+    "2b": ("Qwen/Qwen3-VL-2B-Thinking", "Qwen/Qwen3-VL-2B-Instruct", "qwen3_vl_2b_thinking_task_vector.pt"),
+    "4b": ("Qwen/Qwen3-VL-4B-Thinking", "Qwen/Qwen3-VL-4B-Instruct", "qwen3_vl_4b_thinking_task_vector.pt"),
+    "8b": ("Qwen/Qwen3-VL-8B-Thinking", "Qwen/Qwen3-VL-8B-Instruct", "qwen3_vl_8b_thinking_task_vector.pt"),
+}
 
-def load_models():
+
+def load_models(r_model: str, m_model: str):
     """Load R (Thinking) and M (Instruct) models."""
     from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
-    print(f"Loading processor for {R_MODEL}...")
-    processor = AutoProcessor.from_pretrained(R_MODEL)
+    print(f"Loading processor for {r_model}...")
+    processor = AutoProcessor.from_pretrained(r_model)
 
-    print(f"Loading R (Thinking): {R_MODEL}...")
-    r_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        R_MODEL, torch_dtype=torch.bfloat16
+    print(f"Loading R (Thinking): {r_model}...")
+    r_model_loaded = Qwen3VLForConditionalGeneration.from_pretrained(
+        r_model, torch_dtype=torch.bfloat16
     )
 
-    print(f"Loading M (Instruct): {M_MODEL}...")
-    m_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        M_MODEL, torch_dtype=torch.bfloat16
+    print(f"Loading M (Instruct): {m_model}...")
+    m_model_loaded = Qwen3VLForConditionalGeneration.from_pretrained(
+        m_model, torch_dtype=torch.bfloat16
     )
 
-    return r_model, m_model, processor
+    return r_model_loaded, m_model_loaded, processor
 
 
 def verify_model_compatibility(model1, model2):
@@ -93,7 +99,14 @@ def save_task_vector(task_vector, path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Construct τ = R - M (Qwen3-VL-8B-Thinking - Instruct)")
+    parser = argparse.ArgumentParser(description="Construct τ = R - M (Qwen3-VL Thinking - Instruct)")
+    parser.add_argument(
+        "--size",
+        type=str,
+        choices=["2b", "4b", "8b"],
+        default="8b",
+        help="Model size: 2b, 4b, or 8b. Sets R/M models and output filename (e.g. qwen3_vl_2b_thinking_task_vector.pt)",
+    )
     parser.add_argument(
         "--save-dir",
         type=str,
@@ -102,12 +115,14 @@ def main():
     )
     args = parser.parse_args()
 
+    r_model, m_model, output_name = SIZE_CONFIG[args.size]
+    path = os.path.join(args.save_dir, output_name)
+
     try:
-        print("\n=== Building τ = R - M (Qwen3-VL-8B-Thinking - Qwen3-VL-8B-Instruct) ===")
-        r_model, m_model, _ = load_models()
-        verify_model_compatibility(r_model, m_model)
-        task_vector = compute_task_vector(r_model, m_model)
-        path = os.path.join(args.save_dir, TASK_VECTOR_PATH)
+        print(f"\n=== Building τ = R - M ({r_model} - {m_model}) ===")
+        r_loaded, m_loaded, _ = load_models(r_model, m_model)
+        verify_model_compatibility(r_loaded, m_loaded)
+        task_vector = compute_task_vector(r_loaded, m_loaded)
         save_task_vector(task_vector, path)
         print("\nDone.")
     except Exception as e:

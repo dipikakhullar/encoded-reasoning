@@ -1,213 +1,224 @@
 """
-Best-of-N evaluation: generate N responses per problem, count correct if any is correct.
-Uses alpha=1.5 model (O = M + 1.5 * τ) from eval_results_alpha_1.5.json setup.
-Saves all transcripts under arithmetic_problems_bon/.
+Evaluate best-of-N using pre-collected rollouts (from construct_rollouts.py).
+Loads rollouts, samples n per problem, and applies multiple eligibility/selection
+metrics to pick the chosen response. Saves results and transcripts under arithmetic_problems_bon/.
 """
 
 import argparse
 import json
 import os
-import re
+import random
+from collections import Counter
 
-import torch
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-
-M_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
-TASK_VECTOR_PATH = os.path.join(os.path.dirname(__file__), "qwen3_vl_8b_thinking_task_vector.pt")
-ALPHA = 1.5
+# ---------------------------------------------------------------------------
+# Eligibility / selection metrics (pick one response from n rollouts)
+# ---------------------------------------------------------------------------
 
 
-def load_arithmetic_problems_from_file(path: str, max_problems: int | None = None) -> list[dict]:
-    """Load arithmetic problems from a local JSONL file."""
-    print(f"Loading arithmetic problems from {path}...")
-    problems = []
+def metric_first_correct(rollouts: list[dict], gt_answer: int | float]) -> int:
+    """Pick the first response that is correct; else pick index 0."""
+    for i, r in enumerate(rollouts):
+        pred = r.get("pred")
+        if pred is not None and pred == gt_answer:
+            return i
+    return 0
+
+
+def metric_random_correct(rollouts: list[dict], gt_answer: int | float) -> int:
+    """Pick uniformly among correct responses; if none correct, pick random among all."""
+    correct_indices = [i for i, r in enumerate(rollouts) if r.get("pred") is not None and r["pred"] == gt_answer]
+    if correct_indices:
+        return random.choice(correct_indices)
+    return random.randrange(len(rollouts))
+
+
+def metric_majority_vote(rollouts: list[dict], gt_answer: int | float) -> int:
+    """Pick the response whose extracted answer is the most common among the n (ties: first)."""
+    preds = [r.get("pred") for r in rollouts]
+    value_counts: Counter = Counter(p for p in preds if p is not None)
+    if not value_counts:
+        return 0
+    best_value = value_counts.most_common(1)[0][0]
+    for i, p in enumerate(preds):
+        if p == best_value:
+            return i
+    return 0
+
+
+def metric_last(rollouts: list[dict], gt_answer: int | float) -> int:
+    """Always pick the last (n-th) response."""
+    return len(rollouts) - 1
+
+
+def metric_random(rollouts: list[dict], gt_answer: int | float) -> int:
+    """Pick a random response among the n."""
+    return random.randrange(len(rollouts))
+
+
+# Registry of metric name -> (function, description)
+ELIGIBILITY_METRICS = {
+    "first_correct": (metric_first_correct, "First response that is correct; else first"),
+    "random_correct": (metric_random_correct, "Uniform among correct; else random among all"),
+    "majority_vote": (metric_majority_vote, "Most common extracted answer (ties: first)"),
+    "last": (metric_last, "Always the last (n-th) response"),
+    "random": (metric_random, "Uniform random among n"),
+}
+
+
+def load_rollouts(path: str) -> dict:
+    """Load rollouts JSON produced by construct_rollouts.py."""
     with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            problems.append(json.loads(line))
-            if max_problems is not None and len(problems) >= max_problems:
-                break
-    print(f"Loaded {len(problems)} problems.")
-    return problems
+        return json.load(f)
 
 
-def load_model_and_task_vector(task_vector_path: str):
-    """Load M (Instruct) and τ (R - M)."""
-    print(f"Loading model M (Instruct): {M_MODEL}...")
-    model = Qwen3VLForConditionalGeneration.from_pretrained(
-        M_MODEL,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    processor = AutoProcessor.from_pretrained(M_MODEL)
-
-    print(f"Loading task vector τ (R - M) from {task_vector_path}...")
-    task_vector = torch.load(task_vector_path, map_location="cpu", weights_only=True)
-
-    return model, processor, task_vector
-
-
-def apply_task_vector(model, task_vector: dict, alpha: float):
-    """Apply τ to M: O[k] = M[k] + α * τ[k]. Modifies model in-place."""
-    with torch.no_grad():
-        for name, delta in task_vector.items():
-            if name not in dict(model.named_parameters()):
-                continue
-            param = model.get_parameter(name)
-            param.add_(delta.to(param.device, dtype=param.dtype) * alpha)
-    return model
-
-
-def extract_answer_from_output(text: str) -> int | float | None:
-    """Extract the final answer from \\boxed{...} in model output."""
-    match = re.search(r"\\boxed\{([^{}]*)\}", text)
-    if not match:
-        return None
-    content = match.group(1).strip().replace("\u2212", "-")
-    if not content:
-        return None
-    try:
-        return float(content)
-    except ValueError:
-        return None
-
-
-def evaluate_best_of_n(
-    model,
-    processor,
-    problems: list[dict],
-    n: int,
-    max_new_tokens: int,
-    temperature: float,
-    output_path: str | None,
-    output_meta: dict | None,
+def evaluate_best_of_n_from_rollouts(
+    rollouts_data: dict,
+    n_values: list[int],
+    metrics: list[str],
+    num_trials: int,
+    output_dir: str | None,
+    seed: int | None,
 ) -> dict:
-    """Best-of-N: generate N responses per problem, correct if any is correct. Save all transcripts."""
-    correct = 0
-    results = []
-    meta = output_meta or {}
+    """
+    For each n in n_values, sample n rollouts per problem (without replacement)
+    and evaluate each eligibility metric. Optionally run num_trials trials and
+    average (for stochastic metrics).
+    """
+    if seed is not None:
+        random.seed(seed)
 
-    for i, item in enumerate(problems):
-        problem = item["problem"]
-        gt_answer = item["answer"]
-        prompt = f"{problem}\n\nPut your final answer in \\boxed{{}}."
-        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+    problems = rollouts_data["problems"]
+    all_rollouts = rollouts_data["rollouts"]
+    rollouts_per_problem = rollouts_data["rollouts_per_problem"]
 
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
+    if any(len(r) < max(n_values) for r in all_rollouts):
+        raise ValueError(
+            f"Rollouts per problem ({rollouts_per_problem}) must be >= max(n)={max(n_values)}"
         )
-        inputs = {k: v.to(model.device) if hasattr(v, "to") else v for k, v in inputs.items()}
-        input_len = inputs["input_ids"].shape[1]
 
-        responses = []
-        transcripts = []
-        any_correct = False
+    results_by_n = {}
 
-        for j in range(n):
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    do_sample=True,
-                    temperature=temperature,
-                    pad_token_id=processor.tokenizer.eos_token_id,
-                )
+    for n in n_values:
+        metric_accuracies = {m: [] for m in metrics}
+        # For each problem, we'll sample n indices and apply each metric
+        problem_results = []
 
-            response = processor.batch_decode(
-                outputs[:, input_len:],
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )[0]
+        for prob_idx, (prob_meta, rollouts) in enumerate(zip(problems, all_rollouts)):
+            gt = prob_meta["answer"]
+            problem_text = prob_meta["problem"]
 
-            pred = extract_answer_from_output(response)
-            responses.append({"response": response, "pred": pred})
-            transcripts.append([
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": response},
-            ])
-            if pred is not None and pred == gt_answer:
-                any_correct = True
+            trial_correct = {m: [] for m in metrics}
 
-        if any_correct:
-            correct += 1
+            # One representative sample for stored transcripts
+            indices_rep = random.sample(range(len(rollouts)), n)
+            sampled_rep = [rollouts[i] for i in indices_rep]
+            prompt = f"{problem_text}\n\nPut your final answer in \\boxed{{}}."
+            transcripts = [
+                [{"role": "user", "content": prompt}, {"role": "assistant", "content": r["response"]}]
+                for r in sampled_rep
+            ]
+            chosen_per_metric = {}
+            for m in metrics:
+                fn, _ = ELIGIBILITY_METRICS[m]
+                idx = fn(sampled_rep, gt)
+                chosen_per_metric[m] = {"response": sampled_rep[idx]["response"], "pred": sampled_rep[idx].get("pred")}
 
-        result = {
-            "problem": problem,
-            "gt": gt_answer,
-            "correct": any_correct,
-            "n": n,
-            "responses": responses,
-            "transcripts": transcripts,
+            for trial in range(num_trials):
+                indices = random.sample(range(len(rollouts)), n)
+                sampled = [rollouts[i] for i in indices]
+
+                for metric_name in metrics:
+                    fn, _ = ELIGIBILITY_METRICS[metric_name]
+                    chosen_idx = fn(sampled, gt)
+                    chosen = sampled[chosen_idx]
+                    pred = chosen.get("pred")
+                    correct = pred is not None and pred == gt
+                    trial_correct[metric_name].append(1 if correct else 0)
+
+            for m in metrics:
+                metric_accuracies[m].append(sum(trial_correct[m]) / num_trials)
+
+            problem_results.append({
+                "problem": problem_text,
+                "gt": gt,
+                "n": n,
+                "rollout_indices_sample": indices_rep,
+                "transcripts": transcripts,
+                "chosen_per_metric": chosen_per_metric,
+                "accuracy_per_metric": {m: metric_accuracies[m][-1] for m in metrics},
+            })
+
+        acc_per_metric = {
+            m: sum(metric_accuracies[m]) / len(problems) if problems else 0.0
+            for m in metrics
         }
-        results.append(result)
+        results_by_n[n] = {
+            "accuracy_per_metric": acc_per_metric,
+            "num_problems": len(problems),
+            "num_trials": num_trials,
+            "results": problem_results,
+        }
 
-        if output_path:
-            accuracy_so_far = correct / len(results) if results else 0.0
-            output_data = {**meta, "n": n, "accuracy": accuracy_so_far, "correct": correct, "total": len(results), "results": results}
-            with open(output_path, "w") as f:
-                json.dump(output_data, f, indent=2)
+        if output_dir:
+            out_path = os.path.join(output_dir, f"eval_results_bon_n{n}.json")
+            payload = {
+                "rollouts_path": rollouts_data.get("_path", ""),
+                "alpha": rollouts_data.get("alpha"),
+                "n": n,
+                "metrics": metrics,
+                "num_trials": num_trials,
+                "seed": seed,
+                **results_by_n[n],
+            }
+            os.makedirs(output_dir, exist_ok=True)
+            with open(out_path, "w") as f:
+                json.dump(payload, f, indent=2)
+            print(f"  n={n}: saved to {out_path}")
 
-        print(f"  Problem {i + 1}/{len(problems)}: {'correct' if any_correct else 'incorrect'} (n={n})")
-
-    accuracy = correct / len(problems) if problems else 0.0
-    return {"accuracy": accuracy, "correct": correct, "total": len(problems), "results": results}
+    return results_by_n
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Best-of-N evaluation with alpha=1.5 model")
-    parser.add_argument("--n", type=int, required=True, help="Number of samples per problem (best-of-n)")
-    parser.add_argument("--max-problems", type=int, default=5, help="Number of problems to evaluate")
-    parser.add_argument("--max-tokens", type=int, default=8000, help="Max new tokens per generation")
-    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
-    parser.add_argument("--task-vector-path", type=str, default=TASK_VECTOR_PATH, help="Path to τ .pt file")
-    parser.add_argument("--problems-file", type=str, default=None, help="Path to arithmetic_problems.jsonl")
-    parser.add_argument("--output-dir", type=str, default=None, help="Output directory (default: arithmetic_problems_bon)")
+    parser = argparse.ArgumentParser(description="Evaluate best-of-N from rollouts with eligibility metrics")
+    parser.add_argument("--rollouts", type=str, required=True, help="Path to rollouts JSON (from construct_rollouts.py)")
+    parser.add_argument("--n", type=int, nargs="+", default=[2, 4, 8, 16], help="Best-of-N values")
+    parser.add_argument("--metrics", type=str, nargs="+", default=list(ELIGIBILITY_METRICS), help="Eligibility metrics to use")
+    parser.add_argument("--trials", type=int, default=1, help="Number of trials per problem (for stochastic metrics)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory (default: arithmetic_problems_bon)")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    problems_file = args.problems_file or os.path.join(script_dir, "arithmetic_problems.jsonl")
     output_dir = args.output_dir or os.path.join(script_dir, "arithmetic_problems_bon")
 
-    if not os.path.exists(args.task_vector_path):
-        print(f"Error: Task vector not found at {args.task_vector_path}")
+    if not os.path.exists(args.rollouts):
+        print(f"Error: Rollouts file not found: {args.rollouts}")
+        print("Run construct_rollouts.py first.")
         return 1
 
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"eval_results_bon_n{args.n}.json")
+    rollouts_data = load_rollouts(args.rollouts)
+    rollouts_data["_path"] = args.rollouts
 
-    model, processor, task_vector = load_model_and_task_vector(args.task_vector_path)
-    print(f"\nApplying O = M + {ALPHA} * τ (alpha=1.5)...")
-    apply_task_vector(model, task_vector, ALPHA)
+    print(f"Loaded {rollouts_data['num_problems']} problems × {rollouts_data['rollouts_per_problem']} rollouts")
+    print(f"Best-of-N values: {args.n}")
+    print(f"Metrics: {args.metrics}")
+    print(f"Trials per problem: {args.trials}")
+    print()
 
-    problems = load_arithmetic_problems_from_file(problems_file, max_problems=args.max_problems)
-    print(f"\nBest-of-{args.n} evaluation on {len(problems)} problems (temperature={args.temperature})...")
-
-    output_meta = {
-        "alpha": ALPHA,
-        "n": args.n,
-        "temperature": args.temperature,
-        "model": M_MODEL,
-        "task_vector_path": args.task_vector_path,
-    }
-
-    eval_result = evaluate_best_of_n(
-        model, processor, problems,
-        n=args.n,
-        max_new_tokens=args.max_tokens,
-        temperature=args.temperature,
-        output_path=output_path,
-        output_meta=output_meta,
+    results_by_n = evaluate_best_of_n_from_rollouts(
+        rollouts_data,
+        n_values=args.n,
+        metrics=args.metrics,
+        num_trials=args.trials,
+        output_dir=output_dir,
+        seed=args.seed,
     )
 
-    print(f"\n--- Best-of-{args.n} Results ---")
-    print(f"  Accuracy: {eval_result['accuracy']:.2%} ({eval_result['correct']}/{eval_result['total']})")
-    print(f"\nSaved to {output_path}")
+    print("\n--- Best-of-N accuracy by metric ---")
+    for n in args.n:
+        acc = results_by_n[n]["accuracy_per_metric"]
+        print(f"  n={n}: " + "  ".join(f"{m}={acc[m]:.2%}" for m in args.metrics))
+    print(f"\nResults saved under {output_dir}")
 
     return 0
 
