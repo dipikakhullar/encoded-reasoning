@@ -635,69 +635,6 @@ def generate_analysis_report(eval_path: Path, samples: list[dict], header: dict)
 
         lines.append("")
 
-    # Per-sample details
-    lines.append("-" * 80)
-    lines.append("PER-SAMPLE RESULTS")
-    lines.append("-" * 80)
-    lines.append("")
-
-    # Compute per-sample totals
-    sample_totals = []
-    for s in samples:
-        sid = s.get("id", "unknown")
-        total = sum(s["scores"].get(r, {}).get("value", 0) for r in all_rubrics_found)
-        sample_totals.append((sid, total))
-
-    max_id_len = max(len(sid) for sid, _ in sample_totals) if sample_totals else 20
-    lines.append(f"{'Sample ID':<{max_id_len}}  {'Total':>10}")
-    lines.append("-" * (max_id_len + 15))
-
-    for sid, total in sample_totals:
-        lines.append(f"{sid:<{max_id_len}}  {total:>10.1f}")
-
-    lines.append("")
-
-    # Detailed breakdown for first few samples
-    lines.append("-" * 80)
-    lines.append("DETAILED BREAKDOWN (first 3 samples)")
-    lines.append("-" * 80)
-
-    for s in samples[:3]:
-        lines.append("")
-        lines.append(f"Sample: {s.get('id', 'unknown')}")
-        lines.append("")
-
-        if positive_found:
-            lines.append("  Positive Rubrics:")
-            for rubric in positive_found:
-                score = s["scores"].get(rubric, {}).get("value", 0)
-                lines.append(f"    {rubric:<40} {score:>6.1f}")
-            pos_sum = sum(s["scores"].get(r, {}).get("value", 0) for r in positive_found)
-            lines.append(f"    {'SUBTOTAL':<40} {pos_sum:>6.1f}")
-            lines.append("")
-
-        if negative_found:
-            lines.append("  Negative Rubrics (0 is best):")
-            for rubric in negative_found:
-                score = s["scores"].get(rubric, {}).get("value", 0)
-                lines.append(f"    {rubric:<40} {score:>6.1f}")
-            neg_sum = sum(s["scores"].get(r, {}).get("value", 0) for r in negative_found)
-            lines.append(f"    {'SUBTOTAL':<40} {neg_sum:>6.1f}")
-            lines.append("")
-
-        if legacy_found:
-            lines.append("  Legacy Rubrics:")
-            for rubric in legacy_found:
-                score = s["scores"].get(rubric, {}).get("value", 0)
-                lines.append(f"    {rubric:<40} {score:>6.1f}")
-            legacy_sum = sum(s["scores"].get(r, {}).get("value", 0) for r in legacy_found)
-            lines.append(f"    {'SUBTOTAL':<40} {legacy_sum:>6.1f}")
-            lines.append("")
-
-        total = sum(s["scores"].get(r, {}).get("value", 0) for r in all_rubrics_found)
-        lines.append(f"  TOTAL: {total:.1f}")
-
-    lines.append("")
     lines.append("=" * 80)
     lines.append("END OF REPORT")
     lines.append("=" * 80)
