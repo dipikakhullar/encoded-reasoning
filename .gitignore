@@ -48,3 +48,10 @@ week_1/rollouts/
 
 # Logs
 *.log
+# Data
+data/
+logs/
+rollouts/
+*.zip
+
+*uv.lock
