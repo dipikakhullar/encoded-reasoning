@@ -1,14 +1,24 @@
 """Inspect-AI integration for CoT quality evaluation.
 
 This module provides an inspect-ai Task for evaluating Chain of Thought quality
-using the 32 rubric dimensions. It loads pre-generated CoT traces from HLE
-(Humanity's Last Exam) format and scores them using model-graded evaluation.
+using the rubric dimensions. It supports multiple data formats with automatic
+detection:
+
+Supported formats:
+    1. HLE format: Model subdirectories with nested response structure
+       - data/{model_name}/*.json with rollouts[].response.choices[0].message.content
+
+    2. Rollouts format: Task vector steering experiment files
+       - data/*.json with alpha, problems[], rollouts[][] structure
 
 Usage:
-    # From command line:
+    # From command line (uses default data/ directory):
     inspect eval cot_quality_metrics/src/cot_quality_metrics/inspect_task.py
 
-    # With options:
+    # With custom data directory:
+    inspect eval inspect_task.py -T data_dir=/path/to/data
+
+    # With specific model:
     inspect eval inspect_task.py --model anthropic/claude-sonnet-4-20250514
 """
 
@@ -36,62 +46,203 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
-def load_cot_dataset(data_dir: Path) -> list[Sample]:
-    """Load CoT traces into inspect-ai Sample format.
+class FileFormat:
+    """Detected file format types."""
+    HLE = "hle"  # Original HLE format with nested response structure
+    ROLLOUTS = "rollouts"  # Task vector rollouts format
+    UNKNOWN = "unknown"
+
+
+def detect_file_format(data: dict) -> str:
+    """Detect the format of a JSON data file.
 
     Args:
-        data_dir: Directory containing data organized by model subdirectories.
+        data: Parsed JSON data from a file.
+
+    Returns:
+        FileFormat constant indicating the detected format.
+    """
+    # Rollouts format has: alpha, model, problems, rollouts (list of lists)
+    if all(k in data for k in ["alpha", "problems", "rollouts"]):
+        if isinstance(data.get("rollouts"), list) and data["rollouts"]:
+            # Check if rollouts is list of lists (rollouts format)
+            if isinstance(data["rollouts"][0], list):
+                return FileFormat.ROLLOUTS
+
+    # HLE format has: rollouts (list of dicts with response.choices structure)
+    if "rollouts" in data and isinstance(data.get("rollouts"), list):
+        if data["rollouts"]:
+            rollout = data["rollouts"][0]
+            if isinstance(rollout, dict) and "response" in rollout:
+                if isinstance(rollout["response"], dict) and "choices" in rollout["response"]:
+                    return FileFormat.HLE
+
+    return FileFormat.UNKNOWN
+
+
+def load_rollouts_file(json_file: Path, data: dict) -> list[Sample]:
+    """Load samples from a task vector rollouts format file.
+
+    Args:
+        json_file: Path to the JSON file (for ID generation).
+        data: Parsed JSON data.
+
+    Returns:
+        List of Sample objects.
+    """
+    samples = []
+    alpha = data.get("alpha", "unknown")
+    model = data.get("model", "unknown")
+    # Clean model name for ID (remove slashes)
+    model_short = model.split("/")[-1] if "/" in model else model
+
+    for prob_idx, problem in enumerate(data.get("problems", [])):
+        question = problem.get("problem", "")
+        expected = problem.get("answer")
+
+        for roll_idx, rollout in enumerate(data.get("rollouts", [[]])[prob_idx]):
+            cot_text = rollout.get("response", "")
+            predicted = rollout.get("pred")
+
+            samples.append(
+                Sample(
+                    input=cot_text,
+                    target=str(expected) if expected is not None else "",
+                    id=f"{model_short}/alpha{alpha}/prob{prob_idx}/roll{roll_idx}",
+                    metadata={
+                        "model": model,
+                        "alpha": alpha,
+                        "problem_idx": prob_idx,
+                        "rollout_idx": roll_idx,
+                        "question": question,
+                        "expected": expected,
+                        "predicted": predicted,
+                        "correct": predicted == expected if expected is not None else None,
+                        "source_file": json_file.name,
+                        "format": FileFormat.ROLLOUTS,
+                    },
+                )
+            )
+
+    return samples
+
+
+def load_hle_file(json_file: Path, data: dict, model_name: str) -> list[Sample]:
+    """Load samples from an HLE format file.
+
+    Args:
+        json_file: Path to the JSON file.
+        data: Parsed JSON data.
+        model_name: Model name (usually from parent directory).
+
+    Returns:
+        List of Sample objects.
+    """
+    samples = []
+    filename = json_file.stem
+    sample_id = data.get("sample_id", filename)
+    question = data.get("question", "")
+    ground_truth = data.get("ground_truth", "")
+
+    for i, rollout in enumerate(data.get("rollouts", [])):
+        try:
+            cot_text = rollout["response"]["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            continue
+
+        samples.append(
+            Sample(
+                input=cot_text,
+                target=ground_truth,
+                id=f"{model_name}/{filename}/rollout_{i}",
+                metadata={
+                    "model": model_name,
+                    "filename": filename,
+                    "sample_id": sample_id,
+                    "rollout_idx": i,
+                    "question": question,
+                    "ground_truth": ground_truth,
+                    "format": FileFormat.HLE,
+                },
+            )
+        )
+
+    return samples
+
+
+def load_dataset_autodetect(data_dir: Path) -> list[Sample]:
+    """Load CoT traces with automatic format detection.
+
+    Supports both HLE format (model subdirectories with nested response structure)
+    and rollouts format (flat files with alpha/problems/rollouts structure).
+
+    Args:
+        data_dir: Directory containing data files. Can be:
+            - A directory with model subdirectories (HLE format)
+            - A directory with rollouts JSON files directly
+            - A mixed directory with both formats
 
     Returns:
         List of Sample objects for inspect-ai evaluation.
-        Use inspect-ai's --limit flag to control how many samples are evaluated.
     """
     samples = []
 
-    for model_dir in sorted(data_dir.iterdir()):
-        if not model_dir.is_dir():
+    # First, check for JSON files directly in data_dir (rollouts format)
+    for json_file in sorted(data_dir.glob("*.json")):
+        try:
+            data = json.loads(json_file.read_text())
+        except json.JSONDecodeError:
             continue
-        if model_dir.name.startswith(".") or model_dir.name.startswith("__"):
+
+        fmt = detect_file_format(data)
+        if fmt == FileFormat.ROLLOUTS:
+            samples.extend(load_rollouts_file(json_file, data))
+        elif fmt == FileFormat.HLE:
+            # HLE file in root - use filename as model name
+            samples.extend(load_hle_file(json_file, data, json_file.stem))
+
+    # Then, check subdirectories (HLE format with model subdirs)
+    for subdir in sorted(data_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+        if subdir.name.startswith(".") or subdir.name.startswith("__"):
             continue
 
-        model_name = model_dir.name
+        model_name = subdir.name
 
-        for json_file in sorted(model_dir.glob("*.json")):
-            filename = json_file.stem  # filename without extension (experimental condition)
-
+        for json_file in sorted(subdir.glob("*.json")):
             try:
                 data = json.loads(json_file.read_text())
             except json.JSONDecodeError:
                 continue
 
-            sample_id = data.get("sample_id", filename)
-            question = data.get("question", "")
-            ground_truth = data.get("ground_truth", "")
-
-            for i, rollout in enumerate(data.get("rollouts", [])):
-                # Extract CoT text from response
-                try:
-                    cot_text = rollout["response"]["choices"][0]["message"]["content"]
-                except (KeyError, IndexError):
-                    continue
-
-                samples.append(
-                    Sample(
-                        input=cot_text,  # The CoT to evaluate
-                        target=ground_truth,  # Original correct answer (for reference)
-                        id=f"{model_name}/{filename}/rollout_{i}",
-                        metadata={
-                            "model": model_name,
-                            "filename": filename,
-                            "sample_id": sample_id,
-                            "rollout_idx": i,
-                            "question": question,
-                            "ground_truth": ground_truth,
-                        },
-                    )
-                )
+            fmt = detect_file_format(data)
+            if fmt == FileFormat.ROLLOUTS:
+                # Rollouts file in a subdir - still use its own metadata
+                samples.extend(load_rollouts_file(json_file, data))
+            elif fmt == FileFormat.HLE:
+                samples.extend(load_hle_file(json_file, data, model_name))
 
     return samples
+
+
+def load_cot_dataset(data_dir: Path) -> list[Sample]:
+    """Load CoT traces into inspect-ai Sample format with automatic format detection.
+
+    Supports both HLE format (model subdirectories with nested response structure)
+    and rollouts format (flat files with alpha/problems/rollouts structure).
+
+    Args:
+        data_dir: Directory containing data. Can be:
+            - A directory with model subdirectories (HLE format)
+            - A directory with rollouts JSON files directly
+            - A mixed directory with both formats
+
+    Returns:
+        List of Sample objects for inspect-ai evaluation.
+        Use inspect-ai's --limit flag to control how many samples are evaluated.
+    """
+    return load_dataset_autodetect(data_dir)
 
 
 @solver
