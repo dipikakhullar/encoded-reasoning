@@ -25,11 +25,11 @@ from inspect_ai.solver import Generate, Solver, TaskState, solver
 
 try:
     from .evaluate import load_prompt, parse_evaluation_response
-    from .schemas import ALL_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from .schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
 except ImportError:
     # Support running directly via inspect eval
     from cot_quality_metrics.evaluate import load_prompt, parse_evaluation_response
-    from cot_quality_metrics.schemas import ALL_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from cot_quality_metrics.schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
 
 # Project root: encoded-reasoning/
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -202,21 +202,28 @@ def create_rubric_scorer(
 def create_all_scorers(
     rubric_ids: list[str] | None = None,
     prompts_dir: Path | None = None,
+    include_composites: bool = False,
 ) -> list[Scorer]:
     """Create scorers for all specified rubrics.
 
     Args:
         rubric_ids: List of rubric IDs to create scorers for.
-                   If None, creates scorers for all 32 rubrics.
+                   If None, creates scorers for all 34 rubrics (or 39 with composites).
         prompts_dir: Directory containing prompt templates.
+        include_composites: Whether to include composite rubrics when rubric_ids is None.
 
     Returns:
         List of Scorer functions.
     """
+    all_available = ALL_RUBRICS + COMPOSITE_RUBRICS if include_composites else ALL_RUBRICS
+
     if rubric_ids is None:
-        rubrics = ALL_RUBRICS
+        rubrics = all_available
     else:
-        rubrics = [r for r in ALL_RUBRICS if r.id in rubric_ids]
+        rubrics = [r for r in all_available if r.id in rubric_ids]
+        # Also check COMPOSITE_RUBRICS if not found in ALL_RUBRICS
+        if len(rubrics) < len(rubric_ids):
+            rubrics.extend([r for r in COMPOSITE_RUBRICS if r.id in rubric_ids and r not in rubrics])
 
     return [create_rubric_scorer(r, prompts_dir) for r in rubrics]
 
@@ -298,6 +305,62 @@ def cot_quality_negative(data_dir: str | None = None) -> Task:
 def cot_quality_legacy(data_dir: str | None = None) -> Task:
     """Evaluate only legacy GDM rubrics (legibility and coverage, 0-4 scale)."""
     rubric_ids = [r.id for r in LEGACY_RUBRICS]
+
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
+    )
+
+    scorers = create_all_scorers(rubric_ids=rubric_ids)
+
+    return Task(
+        dataset=dataset,
+        solver=[passthrough()],
+        scorer=scorers,
+    )
+
+
+@task
+def cot_quality_composite(data_dir: str | None = None) -> Task:
+    """Evaluate only composite rubrics (5 combined metrics).
+
+    Composite rubrics:
+    - fake_rigor (negative): premature_formalization + cargo_cult + complexity_theater + intellectual_flinching
+    - too_clean (negative): no_self_interruption + unnatural_smoothness + suspiciously_complete_resolution
+    - active_investigation (positive): discriminative_experiment_design + error_metabolism + contact_with_reality
+    - epistemic_honesty (positive): calibration + provenance_transparency + process_conclusion_integrity
+    - adaptive_process (positive): generativity_under_stuckness + noticing_confusion + live_updating
+    """
+    rubric_ids = [r.id for r in COMPOSITE_RUBRICS]
+
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
+    )
+
+    scorers = create_all_scorers(rubric_ids=rubric_ids)
+
+    return Task(
+        dataset=dataset,
+        solver=[passthrough()],
+        scorer=scorers,
+    )
+
+
+@task
+def cot_quality_comp_and_legacy(data_dir: str | None = None) -> Task:
+    """Evaluate composite rubrics + legacy GDM rubrics (7 total metrics).
+
+    Composite rubrics (5):
+    - fake_rigor (negative)
+    - too_clean (negative)
+    - active_investigation (positive)
+    - epistemic_honesty (positive)
+    - adaptive_process (positive)
+
+    Legacy rubrics (2):
+    - gdm_legibility (0-4)
+    - gdm_coverage (0-4)
+    """
+    rubric_ids = [r.id for r in COMPOSITE_RUBRICS] + [r.id for r in LEGACY_RUBRICS]
 
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,

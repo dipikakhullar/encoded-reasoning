@@ -358,7 +358,46 @@ LEGACY_RUBRICS = [
     ),
 ]
 
+COMPOSITE_RUBRICS = [
+    RubricInfo(
+        id="fake_rigor",
+        name="Fake Rigor (Composite)",
+        rubric_type=RubricType.NEGATIVE,
+        description="Superficial markers of rigor without genuine methodological substance.",
+        prompt_file="35_fake_rigor.md",
+    ),
+    RubricInfo(
+        id="too_clean",
+        name="Too Clean (Composite)",
+        rubric_type=RubricType.NEGATIVE,
+        description="Suspiciously polished reasoning lacking natural messiness.",
+        prompt_file="36_too_clean.md",
+    ),
+    RubricInfo(
+        id="active_investigation",
+        name="Active Investigation (Composite)",
+        rubric_type=RubricType.POSITIVE,
+        description="Actively engages with reality through hypothesis testing and error correction.",
+        prompt_file="37_active_investigation.md",
+    ),
+    RubricInfo(
+        id="epistemic_honesty",
+        name="Epistemic Honesty (Composite)",
+        rubric_type=RubricType.POSITIVE,
+        description="Honest self-assessment with calibrated confidence and transparent sourcing.",
+        prompt_file="38_epistemic_honesty.md",
+    ),
+    RubricInfo(
+        id="adaptive_process",
+        name="Adaptive Process (Composite)",
+        rubric_type=RubricType.POSITIVE,
+        description="Dynamic, responsive thinking that adapts to obstacles and updates on new information.",
+        prompt_file="39_adaptive_process.md",
+    ),
+]
+
 ALL_RUBRICS = POSITIVE_RUBRICS + NEGATIVE_RUBRICS + LEGACY_RUBRICS
+ALL_RUBRICS_WITH_COMPOSITES = ALL_RUBRICS + COMPOSITE_RUBRICS
 
 
 def get_rubric_by_id(rubric_id: str) -> RubricInfo | None:
