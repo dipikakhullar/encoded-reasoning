@@ -156,44 +156,53 @@ def create_rubric_scorer(
         # Get the grader model (uses the model specified in eval config)
         grader = get_model()
 
-        # Generate the evaluation
-        result = await grader.generate(prompt)
+        # Retry loop for parse failures
+        max_retries = 3
+        last_error = None
 
-        # Parse the response
-        try:
-            parsed = parse_evaluation_response(result.completion)
-            score_value = parsed.score
+        for attempt in range(max_retries):
+            # Generate the evaluation
+            result = await grader.generate(prompt)
 
-            # Validate score range
-            if rubric.rubric_type == RubricType.POSITIVE:
-                if not (0 <= score_value <= 5):
-                    raise ValueError(f"Score {score_value} out of range for positive rubric")
-            elif rubric.rubric_type == RubricType.LEGACY:
-                if not (0 <= score_value <= 4):
-                    raise ValueError(f"Score {score_value} out of range for legacy rubric")
-            else:
-                if not (-5 <= score_value <= 0):
-                    raise ValueError(f"Score {score_value} out of range for negative rubric")
+            # Parse the response
+            try:
+                parsed = parse_evaluation_response(result.completion)
+                score_value = parsed.score
 
-            return Score(
-                value=score_value,
-                answer=str(score_value),
-                explanation=parsed.reasoning,
-                metadata={
-                    "dimension": rubric.id,
-                    "evidence": parsed.evidence,
-                    "rubric_type": rubric.rubric_type.value,
-                },
-            )
-        except Exception as e:
-            # Use minimum score for this rubric type on error
-            error_score = rubric.min_score
-            return Score(
-                value=error_score,
-                answer="error",
-                explanation=f"Failed to parse evaluation: {e}",
-                metadata={"dimension": rubric.id, "error": str(e)},
-            )
+                # Validate score range
+                if rubric.rubric_type == RubricType.POSITIVE:
+                    if not (0 <= score_value <= 5):
+                        raise ValueError(f"Score {score_value} out of range for positive rubric")
+                elif rubric.rubric_type == RubricType.LEGACY:
+                    if not (0 <= score_value <= 4):
+                        raise ValueError(f"Score {score_value} out of range for legacy rubric")
+                else:
+                    if not (-5 <= score_value <= 0):
+                        raise ValueError(f"Score {score_value} out of range for negative rubric")
+
+                return Score(
+                    value=score_value,
+                    answer=str(score_value),
+                    explanation=parsed.reasoning,
+                    metadata={
+                        "dimension": rubric.id,
+                        "evidence": parsed.evidence,
+                        "rubric_type": rubric.rubric_type.value,
+                        "attempts": attempt + 1,
+                    },
+                )
+            except Exception as e:
+                last_error = e
+                # Continue to retry
+
+        # All retries exhausted - return error score
+        error_score = rubric.min_score
+        return Score(
+            value=error_score,
+            answer="error",
+            explanation=f"Failed to parse after {max_retries} attempts: {last_error}",
+            metadata={"dimension": rubric.id, "error": str(last_error), "attempts": max_retries},
+        )
 
     # Create scorer with the rubric id as the name
     return scorer(metrics=[mean(), stderr()], name=rubric.id)(lambda: score)()
@@ -361,6 +370,29 @@ def cot_quality_comp_and_legacy(data_dir: str | None = None) -> Task:
     - gdm_coverage (0-4)
     """
     rubric_ids = [r.id for r in COMPOSITE_RUBRICS] + [r.id for r in LEGACY_RUBRICS]
+
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
+    )
+
+    scorers = create_all_scorers(rubric_ids=rubric_ids)
+
+    return Task(
+        dataset=dataset,
+        solver=[passthrough()],
+        scorer=scorers,
+    )
+
+
+@task
+def cot_quality_all(data_dir: str | None = None) -> Task:
+    """Evaluate ALL rubrics: 32 novel + 2 legacy + 5 composite (39 total).
+
+    This runs everything in one pass for direct comparison between
+    component rubrics and composite rubrics on the same samples.
+    """
+    # All 34 base rubrics + 5 composites = 39 total
+    rubric_ids = [r.id for r in ALL_RUBRICS] + [r.id for r in COMPOSITE_RUBRICS]
 
     dataset = load_cot_dataset(
         data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,

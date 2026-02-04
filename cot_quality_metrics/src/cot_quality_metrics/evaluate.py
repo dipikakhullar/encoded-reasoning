@@ -55,7 +55,11 @@ def load_prompt(rubric: RubricInfo, prompts_dir: Path | None = None) -> str:
 
 
 def parse_evaluation_response(response_text: str) -> EvaluationResult:
-    """Parse the JSON response from the evaluator.
+    """Parse the evaluation response from the LLM.
+
+    Supports two formats:
+    1. Plain text with "Score: X" at the end (preferred)
+    2. JSON format (legacy fallback)
 
     Args:
         response_text: The raw response text from the LLM.
@@ -66,7 +70,38 @@ def parse_evaluation_response(response_text: str) -> EvaluationResult:
     Raises:
         ValueError: If response cannot be parsed.
     """
-    # Try to extract JSON from the response
+    # First, try plain text format - find the LAST score mention in the response
+    # Handle various formats: "Score: -3", "**Score:** -3", "Score: 3/5", "Rating: 4", etc.
+    # Look for patterns like "Score: X" or "Score: X/5" anywhere in text, take the last one
+    score_matches = list(re.finditer(
+        r"\*{0,2}(?:Overall\s+)?(?:Final\s+)?(?:Score|Rating)\s*[:=]?\s*\*{0,2}\s*(-?\d+)(?:/\d+)?\*{0,2}",
+        response_text,
+        re.IGNORECASE
+    ))
+    if score_matches:
+        last_match = score_matches[-1]
+        score = int(last_match.group(1))
+        reasoning = response_text[:last_match.start()].strip()
+        return EvaluationResult(
+            dimension="unknown",  # Will be set by caller context
+            score=score,
+            evidence=[],
+            reasoning=reasoning,
+        )
+
+    # Fallback: look for a standalone number at the very end (with optional bold/formatting)
+    end_number_match = re.search(r"\*{0,2}(-?\d+)\*{0,2}\s*$", response_text.strip())
+    if end_number_match:
+        score = int(end_number_match.group(1))
+        reasoning = response_text[:end_number_match.start()].strip()
+        return EvaluationResult(
+            dimension="unknown",
+            score=score,
+            evidence=[],
+            reasoning=reasoning,
+        )
+
+    # Fallback: try JSON format
     # Look for ```json ... ``` blocks first
     json_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
     if json_match:
@@ -77,7 +112,7 @@ def parse_evaluation_response(response_text: str) -> EvaluationResult:
         if json_match:
             json_str = json_match.group(0)
         else:
-            raise ValueError(f"Could not find JSON in response: {response_text[:200]}...")
+            raise ValueError(f"Could not find score in response: {response_text[:200]}...")
 
     try:
         data = json.loads(json_str)

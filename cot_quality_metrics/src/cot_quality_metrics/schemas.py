@@ -367,11 +367,11 @@ COMPOSITE_RUBRICS = [
         prompt_file="35_fake_rigor.md",
     ),
     RubricInfo(
-        id="too_clean",
-        name="Too Clean (Composite)",
-        rubric_type=RubricType.NEGATIVE,
-        description="Suspiciously polished reasoning lacking natural messiness.",
-        prompt_file="36_too_clean.md",
+        id="reportive_fidelity",
+        name="Reportive Fidelity (Composite)",
+        rubric_type=RubricType.POSITIVE,
+        description="Accurately represents actual cognitive process; positions followers to catch errors.",
+        prompt_file="36_reportive_fidelity.md",
     ),
     RubricInfo(
         id="active_investigation",
