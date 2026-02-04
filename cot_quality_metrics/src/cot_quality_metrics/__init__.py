@@ -12,6 +12,7 @@ from .evaluate import (
 )
 from .schemas import (
     ALL_RUBRICS,
+    LEGACY_RUBRICS,
     NEGATIVE_RUBRICS,
     POSITIVE_RUBRICS,
     CoTEvaluation,
@@ -28,7 +29,7 @@ def __getattr__(name: str):
         "cot_quality_eval",
         "cot_quality_positive",
         "cot_quality_negative",
-        "load_hle_dataset",
+        "load_cot_dataset",
         "create_rubric_scorer",
         "create_all_scorers",
         "passthrough",
@@ -59,12 +60,13 @@ __all__ = [
     "ALL_RUBRICS",
     "POSITIVE_RUBRICS",
     "NEGATIVE_RUBRICS",
+    "LEGACY_RUBRICS",
     "get_rubric_by_id",
     # Inspect-AI integration
     "cot_quality_eval",
     "cot_quality_positive",
     "cot_quality_negative",
-    "load_hle_dataset",
+    "load_cot_dataset",
     "create_rubric_scorer",
     "create_all_scorers",
     "passthrough",

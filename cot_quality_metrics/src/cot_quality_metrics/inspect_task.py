@@ -25,21 +25,25 @@ from inspect_ai.solver import Generate, Solver, TaskState, solver
 
 try:
     from .evaluate import load_prompt, parse_evaluation_response
-    from .schemas import ALL_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from .schemas import ALL_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
 except ImportError:
     # Support running directly via inspect eval
     from cot_quality_metrics.evaluate import load_prompt, parse_evaluation_response
-    from cot_quality_metrics.schemas import ALL_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from cot_quality_metrics.schemas import ALL_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+
+# Project root: encoded-reasoning/
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
-def load_hle_dataset(
+def load_cot_dataset(
     data_dir: Path,
     limit: int | None = None,
 ) -> list[Sample]:
-    """Load HLE CoT traces into inspect-ai Sample format.
+    """Load CoT traces into inspect-ai Sample format.
 
     Args:
-        data_dir: Directory containing HLE data organized by model subdirectories.
+        data_dir: Directory containing data organized by model subdirectories.
         limit: Maximum number of samples to load.
 
     Returns:
@@ -134,57 +138,57 @@ def create_rubric_scorer(
 
     prompt_template = load_prompt(rubric, prompts_dir)
 
-    @scorer(metrics=[mean(), stderr()])
-    def rubric_scorer() -> Scorer:
-        async def score(state: TaskState, target: Target) -> Score:
-            # Get the CoT text to evaluate
-            cot_text = state.output.completion
+    async def score(state: TaskState, target: Target) -> Score:
+        # Get the CoT text to evaluate
+        cot_text = state.output.completion
 
-            # Build the evaluation prompt
-            prompt = prompt_template.replace("{cot_text}", cot_text)
+        # Build the evaluation prompt
+        prompt = prompt_template.replace("{cot_text}", cot_text)
 
-            # Get the grader model (uses the model specified in eval config)
-            grader = get_model()
+        # Get the grader model (uses the model specified in eval config)
+        grader = get_model()
 
-            # Generate the evaluation
-            result = await grader.generate(prompt)
+        # Generate the evaluation
+        result = await grader.generate(prompt)
 
-            # Parse the response
-            try:
-                parsed = parse_evaluation_response(result.completion)
-                score_value = parsed.score
+        # Parse the response
+        try:
+            parsed = parse_evaluation_response(result.completion)
+            score_value = parsed.score
 
-                # Validate score range
-                if rubric.rubric_type == RubricType.POSITIVE:
-                    if not (0 <= score_value <= 5):
-                        raise ValueError(f"Score {score_value} out of range for positive rubric")
-                else:
-                    if not (-5 <= score_value <= 0):
-                        raise ValueError(f"Score {score_value} out of range for negative rubric")
+            # Validate score range
+            if rubric.rubric_type == RubricType.POSITIVE:
+                if not (0 <= score_value <= 5):
+                    raise ValueError(f"Score {score_value} out of range for positive rubric")
+            elif rubric.rubric_type == RubricType.LEGACY:
+                if not (0 <= score_value <= 4):
+                    raise ValueError(f"Score {score_value} out of range for legacy rubric")
+            else:
+                if not (-5 <= score_value <= 0):
+                    raise ValueError(f"Score {score_value} out of range for negative rubric")
 
-                return Score(
-                    value=score_value,
-                    answer=str(score_value),
-                    explanation=parsed.reasoning,
-                    metadata={
-                        "dimension": rubric.id,
-                        "evidence": parsed.evidence,
-                        "rubric_type": rubric.rubric_type.value,
-                    },
-                )
-            except Exception as e:
-                return Score(
-                    value=0 if rubric.rubric_type == RubricType.POSITIVE else -5,
-                    answer="error",
-                    explanation=f"Failed to parse evaluation: {e}",
-                    metadata={"dimension": rubric.id, "error": str(e)},
-                )
+            return Score(
+                value=score_value,
+                answer=str(score_value),
+                explanation=parsed.reasoning,
+                metadata={
+                    "dimension": rubric.id,
+                    "evidence": parsed.evidence,
+                    "rubric_type": rubric.rubric_type.value,
+                },
+            )
+        except Exception as e:
+            # Use minimum score for this rubric type on error
+            error_score = rubric.min_score
+            return Score(
+                value=error_score,
+                answer="error",
+                explanation=f"Failed to parse evaluation: {e}",
+                metadata={"dimension": rubric.id, "error": str(e)},
+            )
 
-        return score
-
-    # Set the scorer name to the rubric id for identification in logs
-    rubric_scorer.__name__ = rubric.id
-    return rubric_scorer()
+    # Create scorer with the rubric id as the name
+    return scorer(metrics=[mean(), stderr()], name=rubric.id)(lambda: score)()
 
 
 def create_all_scorers(
@@ -211,7 +215,7 @@ def create_all_scorers(
 
 @task
 def cot_quality_eval(
-    data_dir: str = "data",
+    data_dir: str | None = None,
     rubric_ids: str | None = None,
     limit: int | None = None,
 ) -> Task:
@@ -234,8 +238,8 @@ def cot_quality_eval(
     rubric_id_list = rubric_ids.split(",") if rubric_ids else None
 
     # Load dataset
-    dataset = load_hle_dataset(
-        data_dir=Path(data_dir),
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
         limit=limit,
     )
 
@@ -251,14 +255,14 @@ def cot_quality_eval(
 
 @task
 def cot_quality_positive(
-    data_dir: str = "data",
+    data_dir: str | None = None,
     limit: int | None = None,
 ) -> Task:
     """Evaluate only positive rubrics (epistemic virtues, 0-5 scale)."""
     rubric_ids = [r.id for r in POSITIVE_RUBRICS]
 
-    dataset = load_hle_dataset(
-        data_dir=Path(data_dir),
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
         limit=limit,
     )
 
@@ -273,14 +277,36 @@ def cot_quality_positive(
 
 @task
 def cot_quality_negative(
-    data_dir: str = "data",
+    data_dir: str | None = None,
     limit: int | None = None,
 ) -> Task:
     """Evaluate only negative rubrics (anti-patterns, 0 to -5 scale)."""
     rubric_ids = [r.id for r in NEGATIVE_RUBRICS]
 
-    dataset = load_hle_dataset(
-        data_dir=Path(data_dir),
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
+        limit=limit,
+    )
+
+    scorers = create_all_scorers(rubric_ids=rubric_ids)
+
+    return Task(
+        dataset=dataset,
+        solver=[passthrough()],
+        scorer=scorers,
+    )
+
+
+@task
+def cot_quality_legacy(
+    data_dir: str | None = None,
+    limit: int | None = None,
+) -> Task:
+    """Evaluate only legacy GDM rubrics (legibility and coverage, 0-4 scale)."""
+    rubric_ids = [r.id for r in LEGACY_RUBRICS]
+
+    dataset = load_cot_dataset(
+        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
         limit=limit,
     )
 
