@@ -52,6 +52,7 @@ week_1/rollouts/
 data/
 logs/
 rollouts/
+rollouts_sample*/
 *.zip
 
 *uv.lock

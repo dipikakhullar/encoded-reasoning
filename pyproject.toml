@@ -5,7 +5,6 @@ description = "Steering vectors for Qwen3-VL reasoning"
 requires-python = ">=3.10"
 dependencies = [
     "torch",
-    "torchvision",
     "pillow",
     "numpy",
     "scipy",
