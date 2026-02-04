@@ -75,6 +75,22 @@ Available tasks:
 uv run cot-evaluate sample.txt --rubrics noticing_confusion motivated_cognition
 ```
 
+## Analysis Workflow
+
+After running evaluations, run the analysis script to generate summary files:
+
+```bash
+uv run python cot_quality_metrics/src/standalone_scripts/analyze_eval.py logs/EVAL_FILE.eval
+```
+
+This saves analysis outputs to `logs/analyses/` including:
+- Text summary with statistics
+- Correlation heatmap PNG
+- Dendrogram PNG
+- PCA plot PNG
+
+**Policy**: When exploring results, always run analysis scripts normally (not interactively with output piped to terminal) so that output files are created and preserved in `logs/analyses/`.
+
 ## Dependencies
 
 - anthropic >= 0.40.0
