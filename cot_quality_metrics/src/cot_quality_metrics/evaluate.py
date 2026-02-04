@@ -71,16 +71,17 @@ def parse_evaluation_response(response_text: str) -> EvaluationResult:
         ValueError: If response cannot be parsed.
     """
     # First, try plain text format - find the LAST score mention in the response
-    # Handle various formats: "Score: -3", "**Score:** -3", "Score: 3/5", "Rating: 4", etc.
+    # Handle various formats: "Score: -3", "**Score:** -3", "Score: 3.5/5", "Rating: 4", etc.
     # Look for patterns like "Score: X" or "Score: X/5" anywhere in text, take the last one
+    # Supports decimal scores like 3.5, -1.5, etc.
     score_matches = list(re.finditer(
-        r"\*{0,2}(?:Overall\s+)?(?:Final\s+)?(?:Score|Rating)\s*[:=]?\s*\*{0,2}\s*(-?\d+)(?:/\d+)?\*{0,2}",
+        r"\*{0,2}(?:Overall\s+)?(?:Final\s+)?(?:Score|Rating)\s*[:=]?\s*\*{0,2}\s*(-?\d+\.?\d*)(?:/\d+)?\*{0,2}",
         response_text,
         re.IGNORECASE
     ))
     if score_matches:
         last_match = score_matches[-1]
-        score = int(last_match.group(1))
+        score = float(last_match.group(1))
         reasoning = response_text[:last_match.start()].strip()
         return EvaluationResult(
             dimension="unknown",  # Will be set by caller context
@@ -90,9 +91,9 @@ def parse_evaluation_response(response_text: str) -> EvaluationResult:
         )
 
     # Fallback: look for a standalone number at the very end (with optional bold/formatting)
-    end_number_match = re.search(r"\*{0,2}(-?\d+)\*{0,2}\s*$", response_text.strip())
+    end_number_match = re.search(r"\*{0,2}(-?\d+\.?\d*)\*{0,2}\s*$", response_text.strip())
     if end_number_match:
-        score = int(end_number_match.group(1))
+        score = float(end_number_match.group(1))
         reasoning = response_text[:end_number_match.start()].strip()
         return EvaluationResult(
             dimension="unknown",

@@ -42,7 +42,7 @@ class EvaluationResult:
     """Result from a single rubric evaluation."""
 
     dimension: str
-    score: int
+    score: float  # Can be decimal (e.g., 3.5) or integer
     evidence: list[str]
     reasoning: str
 
