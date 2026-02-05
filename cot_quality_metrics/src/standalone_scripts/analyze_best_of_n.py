@@ -130,7 +130,7 @@ def compute_aggregate_scores_for_n(
     """Compute mean scores for best-of-n across all problems.
 
     Returns:
-        {rubric: mean_score, "non_gdm_sum": mean_sum, ...}
+        {rubric: mean_score, "non_gdm_avg": mean_avg, ...}
     """
     scores = compute_scores_for_n(grouped_samples, n, rule, seed, rubrics)
 
@@ -143,26 +143,26 @@ def compute_aggregate_scores_for_n(
                 if len(values) > 1 else 0
             )
 
-    # Compute non-GDM sum
+    # Compute non-GDM average
     gdm_rubrics = {"gdm_legibility", "gdm_coverage"}
     non_gdm = [r for r in rubrics if r not in gdm_rubrics]
 
-    # Sum per sample, then average
+    # Average per sample, then average across samples
     rng = random.Random(seed)
-    non_gdm_sums = []
+    non_gdm_avgs = []
     for (alpha, prob_idx), rollouts in sorted(grouped_samples.items()):
         winner = simulate_best_of_n(rollouts, n, rule, rng)
-        total = sum(
+        values = [
             winner.get("scores", {}).get(r, {}).get("value", 0)
             for r in non_gdm
-        )
-        non_gdm_sums.append(total)
+        ]
+        non_gdm_avgs.append(statistics.mean(values) if values else 0)
 
-    if non_gdm_sums:
-        result["non_gdm_sum"] = statistics.mean(non_gdm_sums)
-        result["non_gdm_sum_stderr"] = (
-            statistics.stdev(non_gdm_sums) / (len(non_gdm_sums) ** 0.5)
-            if len(non_gdm_sums) > 1 else 0
+    if non_gdm_avgs:
+        result["non_gdm_avg"] = statistics.mean(non_gdm_avgs)
+        result["non_gdm_avg_stderr"] = (
+            statistics.stdev(non_gdm_avgs) / (len(non_gdm_avgs) ** 0.5)
+            if len(non_gdm_avgs) > 1 else 0
         )
 
     return result
@@ -218,13 +218,13 @@ def save_aggregate_best_of_n_plot(
     target_model: str = "",
     judge_model: str = "",
 ) -> None:
-    """Plot aggregate scores (non-GDM sum + GDM metrics) vs n."""
+    """Plot aggregate scores (non-GDM avg + GDM metrics) vs n."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Non-GDM sum
-    means = [results[n].get("non_gdm_sum", 0) for n in n_values]
-    errs = [results[n].get("non_gdm_sum_stderr", 0) for n in n_values]
-    ax.errorbar(n_values, means, yerr=errs, label="Non-GDM Sum",
+    # Non-GDM average
+    means = [results[n].get("non_gdm_avg", 0) for n in n_values]
+    errs = [results[n].get("non_gdm_avg_stderr", 0) for n in n_values]
+    ax.errorbar(n_values, means, yerr=errs, label="Non-GDM Avg",
                marker='o', capsize=3, linewidth=2, markersize=8, color='steelblue')
 
     # GDM legibility
@@ -316,26 +316,26 @@ def save_grid_by_alpha(
 
         for n in n_values:
             rng = random.Random(seed)
-            non_gdm_sums = []
+            non_gdm_avgs = []
             leg_vals = []
             cov_vals = []
 
             for prob_idx, rollouts in sorted(prob_groups.items()):
                 winner = simulate_best_of_n(rollouts, n, rule, rng)
 
-                non_gdm_sum = sum(
+                values = [
                     winner.get("scores", {}).get(r, {}).get("value", 0)
                     for r in non_gdm
-                )
-                non_gdm_sums.append(non_gdm_sum)
+                ]
+                non_gdm_avgs.append(statistics.mean(values) if values else 0)
 
                 leg_vals.append(winner.get("scores", {}).get("gdm_legibility", {}).get("value", 0))
                 cov_vals.append(winner.get("scores", {}).get("gdm_coverage", {}).get("value", 0))
 
-            non_gdm_means.append(statistics.mean(non_gdm_sums) if non_gdm_sums else 0)
+            non_gdm_means.append(statistics.mean(non_gdm_avgs) if non_gdm_avgs else 0)
             non_gdm_errs.append(
-                statistics.stdev(non_gdm_sums) / (len(non_gdm_sums) ** 0.5)
-                if len(non_gdm_sums) > 1 else 0
+                statistics.stdev(non_gdm_avgs) / (len(non_gdm_avgs) ** 0.5)
+                if len(non_gdm_avgs) > 1 else 0
             )
             gdm_leg_means.append(statistics.mean(leg_vals) if leg_vals else 0)
             gdm_leg_errs.append(
@@ -350,7 +350,7 @@ def save_grid_by_alpha(
 
         # Plot
         ax.errorbar(n_values, non_gdm_means, yerr=non_gdm_errs,
-                    label=f"Non-GDM Sum ({len(non_gdm)})", marker='o',
+                    label=f"Non-GDM Avg ({len(non_gdm)})", marker='o',
                     capsize=2, linewidth=1.5, markersize=5, color='steelblue')
         ax.errorbar(n_values, gdm_leg_means, yerr=gdm_leg_errs,
                     label="GDM Legibility", marker='s',
@@ -492,7 +492,7 @@ def main():
         results[n] = compute_aggregate_scores_for_n(
             grouped, n, args.rule, args.seed, rubrics
         )
-        print(f"  n={n}: non_gdm_sum={results[n].get('non_gdm_sum', 0):.2f}")
+        print(f"  n={n}: non_gdm_avg={results[n].get('non_gdm_avg', 0):.2f}")
 
     # Output directory
     output_dir = args.output_dir or (project_root / "logs" / "analyses")
@@ -523,11 +523,11 @@ def main():
     print("\n" + "=" * 60)
     print("Best-of-n Analysis Summary")
     print("=" * 60)
-    print(f"{'n':<6} {'Non-GDM Sum':<15} {'GDM Legibility':<15} {'GDM Coverage':<15}")
+    print(f"{'n':<6} {'Non-GDM Avg':<15} {'GDM Legibility':<15} {'GDM Coverage':<15}")
     print("-" * 60)
     for n in args.n_values:
         r = results[n]
-        print(f"{n:<6} {r.get('non_gdm_sum', 0):>7.2f}±{r.get('non_gdm_sum_stderr', 0):<6.2f}"
+        print(f"{n:<6} {r.get('non_gdm_avg', 0):>7.2f}±{r.get('non_gdm_avg_stderr', 0):<6.2f}"
               f"{r.get('gdm_legibility', 0):>7.2f}±{r.get('gdm_legibility_stderr', 0):<6.2f}"
               f"{r.get('gdm_coverage', 0):>7.2f}±{r.get('gdm_coverage_stderr', 0):<6.2f}")
 
