@@ -211,10 +211,8 @@ def save_best_of_n_plot(
 
     for i, rubric in enumerate(rubrics):
         means = [results[n].get(rubric, 0) for n in n_values]
-        errs = [results[n].get(f"{rubric}_stderr", 0) for n in n_values]
-
-        ax.errorbar(n_values, means, yerr=errs, label=rubric,
-                   marker='o', capsize=3, linewidth=2, markersize=6, color=colors[i])
+        ax.plot(n_values, means, label=rubric,
+                marker='o', linewidth=2, markersize=6, color=colors[i])
 
     ax.set_xlabel("n (best-of-n)", fontsize=12)
     ax.set_ylabel("Score", fontsize=12)
@@ -232,6 +230,7 @@ def save_best_of_n_plot(
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
     ax.grid(True, alpha=0.3)
     ax.set_xticks(n_values)
+    ax.set_ylim(0, 5)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -250,21 +249,18 @@ def save_aggregate_best_of_n_plot(
 
     # Non-GDM average
     means = [results[n].get("non_gdm_avg", 0) for n in n_values]
-    errs = [results[n].get("non_gdm_avg_stderr", 0) for n in n_values]
-    ax.errorbar(n_values, means, yerr=errs, label="Non-GDM Avg",
-               marker='o', capsize=3, linewidth=2, markersize=8, color='steelblue')
+    ax.plot(n_values, means, label="Non-GDM Avg",
+            marker='o', linewidth=2, markersize=8, color='steelblue')
 
     # GDM legibility
     means = [results[n].get("gdm_legibility", 0) for n in n_values]
-    errs = [results[n].get("gdm_legibility_stderr", 0) for n in n_values]
-    ax.errorbar(n_values, means, yerr=errs, label="GDM Legibility",
-               marker='s', capsize=3, linewidth=2, markersize=8, color='forestgreen')
+    ax.plot(n_values, means, label="GDM Legibility",
+            marker='s', linewidth=2, markersize=8, color='forestgreen')
 
     # GDM coverage
     means = [results[n].get("gdm_coverage", 0) for n in n_values]
-    errs = [results[n].get("gdm_coverage_stderr", 0) for n in n_values]
-    ax.errorbar(n_values, means, yerr=errs, label="GDM Coverage",
-               marker='^', capsize=3, linewidth=2, markersize=8, color='darkorange')
+    ax.plot(n_values, means, label="GDM Coverage",
+            marker='^', linewidth=2, markersize=8, color='darkorange')
 
     ax.set_xlabel("n (best-of-n)", fontsize=12)
     ax.set_ylabel("Score", fontsize=12)
@@ -282,6 +278,7 @@ def save_aggregate_best_of_n_plot(
     ax.legend(loc='best', fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_xticks(n_values)
+    ax.set_ylim(0, 5)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -375,7 +372,7 @@ def save_grid_by_alpha(
                 if len(cov_vals) > 1 else 0
             )
 
-        # Plot
+        # Plot with error bars (stderr across problems)
         ax.errorbar(n_values, non_gdm_means, yerr=non_gdm_errs,
                     label=f"Non-GDM Avg ({len(non_gdm)})", marker='o',
                     capsize=2, linewidth=1.5, markersize=5, color='steelblue')
@@ -391,6 +388,7 @@ def save_grid_by_alpha(
         ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
+        ax.set_ylim(0, 5)
 
     # Hide unused
     for idx in range(n_alphas, n_rows * n_cols):
@@ -464,10 +462,9 @@ def save_token_count_plot(
     fig, ax = plt.subplots(figsize=(10, 6))
 
     means = [token_results[n]["neg_mean"] for n in n_values]
-    errs = [token_results[n]["neg_stderr"] for n in n_values]
 
-    ax.errorbar(n_values, means, yerr=errs, label="−Token Count",
-               marker='o', capsize=3, linewidth=2, markersize=8, color='purple')
+    ax.plot(n_values, means, label="−Token Count",
+            marker='o', linewidth=2, markersize=8, color='purple')
 
     ax.set_xlabel("n (best-of-n)", fontsize=12)
     ax.set_ylabel("−Token Count (reward)", fontsize=12)
@@ -557,8 +554,7 @@ def save_individual_metrics_grid_by_alpha(
                     if len(values) > 1 else 0
                 )
 
-            ax.errorbar(n_values, means, yerr=errs,
-                        label=rubric, marker='o',
+            ax.errorbar(n_values, means, yerr=errs, label=rubric, marker='o',
                         capsize=2, linewidth=1.5, markersize=4, color=colors[rubric_idx])
 
         ax.set_xlabel("n (best-of-n)", fontsize=10)
@@ -566,6 +562,7 @@ def save_individual_metrics_grid_by_alpha(
         ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
+        ax.set_ylim(0, 5)
 
     # Hide unused
     for idx in range(n_alphas, n_rows * n_cols):
@@ -628,11 +625,9 @@ def save_token_count_grid_by_alpha(
     # Get model name for tokenizer
     model_name = samples[0].get("metadata", {}).get("model", DEFAULT_MODEL)
 
-    for idx, alpha in enumerate(alpha_values):
-        row, col = idx // n_cols, idx % n_cols
-        ax = axes[row, col]
-
-        # Group this alpha's samples by problem
+    # First pass: compute all token means and errors to find global min/max
+    all_token_data = {}  # {alpha: {"means": [...], "errs": [...]}}
+    for alpha in alpha_values:
         alpha_samples = alpha_groups[alpha]
         prob_groups = defaultdict(list)
         for s in alpha_samples:
@@ -640,29 +635,44 @@ def save_token_count_grid_by_alpha(
             if prob_idx is not None:
                 prob_groups[prob_idx].append(s)
 
-        # Compute token counts for each n
         token_means = []
         token_errs = []
-
         for n in n_values:
             rng = random.Random(seed)
             token_counts = []
-
             for prob_idx, rollouts in sorted(prob_groups.items()):
                 winner = simulate_best_of_n(rollouts, n, rule, rng)
                 reasoning_text = winner.get("input", "")
                 tokens = count_tokens(reasoning_text, model_name)
-                # Negative reward: -1 * tokens (shorter is better)
                 token_counts.append(-tokens)
-
             token_means.append(statistics.mean(token_counts) if token_counts else 0)
             token_errs.append(
                 statistics.stdev(token_counts) / (len(token_counts) ** 0.5)
                 if len(token_counts) > 1 else 0
             )
+        all_token_data[alpha] = {"means": token_means, "errs": token_errs}
 
-        # Plot
-        ax.errorbar(n_values, token_means, yerr=token_errs,
+    # Find global min/max across all alphas (including error bars)
+    all_mins = []
+    all_maxs = []
+    for alpha, data in all_token_data.items():
+        for m, e in zip(data["means"], data["errs"]):
+            all_mins.append(m - e)
+            all_maxs.append(m + e)
+    global_min = min(all_mins)
+    global_max = max(all_maxs)
+    # Add small padding
+    padding = (global_max - global_min) * 0.05
+    y_min = global_min - padding
+    y_max = global_max + padding
+
+    # Second pass: plot with consistent y-axis
+    for idx, alpha in enumerate(alpha_values):
+        row, col = idx // n_cols, idx % n_cols
+        ax = axes[row, col]
+
+        data = all_token_data[alpha]
+        ax.errorbar(n_values, data["means"], yerr=data["errs"],
                     label="−Token Count", marker='o',
                     capsize=2, linewidth=1.5, markersize=5, color='purple')
 
@@ -671,6 +681,7 @@ def save_token_count_grid_by_alpha(
         ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
+        ax.set_ylim(y_min, y_max)
 
     # Hide unused
     for idx in range(n_alphas, n_rows * n_cols):
@@ -789,17 +800,14 @@ def main():
     rubrics = list(samples[0].get("scores", {}).keys())
     print(f"Rubrics: {', '.join(rubrics)}")
 
-    # Group samples
-    grouped = group_samples_by_problem(samples)
-    print(f"Problem groups: {len(grouped)} (alpha × problem combinations)")
-
-    # Compute scores for each n
-    results = {}
-    for n in args.n_values:
-        results[n] = compute_aggregate_scores_for_n(
-            grouped, n, args.rule, args.seed, rubrics
-        )
-        print(f"  n={n}: non_gdm_avg={results[n].get('non_gdm_avg', 0):.2f}")
+    # Group samples by alpha
+    alpha_groups = defaultdict(list)
+    for s in samples:
+        alpha = s.get("metadata", {}).get("alpha")
+        if alpha is not None:
+            alpha_groups[alpha].append(s)
+    print(f"Alpha values: {sorted(alpha_groups.keys())}")
+    print(f"Problems per alpha: {len(set(s.get('metadata', {}).get('problem_idx') for s in samples))}")
 
     # Output directory
     output_dir = args.output_dir or (project_root / "logs" / "analyses")
@@ -807,69 +815,29 @@ def main():
 
     base_name = f"best_of_n_{eval_path.stem}"
 
-    # Save plots
-    # 1. All rubrics vs n
-    plot_path = output_dir / f"{base_name}_rubrics.png"
-    save_best_of_n_plot(args.n_values, results, rubrics, plot_path,
-                        target_model=target_model, judge_model=judge_model)
-    print(f"\nRubrics plot saved to: {plot_path}")
-
-    # 2. Aggregate vs n
-    agg_path = output_dir / f"{base_name}_aggregate.png"
-    save_aggregate_best_of_n_plot(args.n_values, results, agg_path,
-                                   target_model=target_model, judge_model=judge_model)
-    print(f"Aggregate plot saved to: {agg_path}")
-
-    # 3. Grid by alpha (aggregate scores)
+    # Save plots (all by-alpha, no cross-alpha averaging)
+    # 1. Grid by alpha (aggregate scores)
     grid_path = output_dir / f"{base_name}_grid_by_alpha.png"
     save_grid_by_alpha(args.n_values, samples, rubrics, args.rule, args.seed,
                        grid_path, target_model=target_model, judge_model=judge_model)
-    print(f"Grid by alpha saved to: {grid_path}")
+    print(f"\nGrid by alpha saved to: {grid_path}")
 
-    # 3b. Grid by alpha (individual metrics)
+    # 2. Grid by alpha (individual metrics)
     metrics_grid_path = output_dir / f"{base_name}_metrics_grid_by_alpha.png"
     save_individual_metrics_grid_by_alpha(args.n_values, samples, rubrics, args.rule,
                                           args.seed, metrics_grid_path,
                                           target_model=target_model, judge_model=judge_model)
     print(f"Individual metrics grid saved to: {metrics_grid_path}")
 
-    # 4. Token count analysis
+    # 3. Token count grid by alpha
     print("\nCounting tokens (loading tokenizer)...")
-    model_name = samples[0].get("metadata", {}).get("model", DEFAULT_MODEL)
-    token_results = {}
-    for n in args.n_values:
-        token_results[n] = compute_token_counts_for_n(
-            grouped, n, args.rule, args.seed, model_name
-        )
-        print(f"  n={n}: mean_tokens={token_results[n]['mean']:.0f}")
-
-    # 4a. Aggregate token count plot
-    token_plot_path = output_dir / f"{base_name}_tokens.png"
-    save_token_count_plot(args.n_values, token_results, token_plot_path,
-                          target_model=target_model, judge_model=judge_model)
-    print(f"Token count plot saved to: {token_plot_path}")
-
-    # 4b. Token count grid by alpha
     token_grid_path = output_dir / f"{base_name}_tokens_grid_by_alpha.png"
     save_token_count_grid_by_alpha(args.n_values, samples, args.rule, args.seed,
                                     token_grid_path, target_model=target_model,
                                     judge_model=judge_model)
     print(f"Token count grid saved to: {token_grid_path}")
 
-    # Print summary table
-    print("\n" + "=" * 80)
-    print("Best-of-n Analysis Summary")
-    print("=" * 80)
-    print(f"{'n':<6} {'Non-GDM Avg':<15} {'GDM Legibility':<15} {'GDM Coverage':<15} {'Tokens':<12}")
-    print("-" * 80)
-    for n in args.n_values:
-        r = results[n]
-        t = token_results[n]
-        print(f"{n:<6} {r.get('non_gdm_avg', 0):>7.2f}±{r.get('non_gdm_avg_stderr', 0):<6.2f}"
-              f"{r.get('gdm_legibility', 0):>7.2f}±{r.get('gdm_legibility_stderr', 0):<6.2f}"
-              f"{r.get('gdm_coverage', 0):>7.2f}±{r.get('gdm_coverage_stderr', 0):<6.2f}"
-              f"{t['mean']:>7.0f}±{t['stderr']:<4.0f}")
-
+    print("\nDone.")
     return 0
 
 
