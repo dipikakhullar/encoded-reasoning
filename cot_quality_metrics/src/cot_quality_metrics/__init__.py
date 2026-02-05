@@ -12,9 +12,8 @@ from .evaluate import (
 )
 from .schemas import (
     ALL_RUBRICS,
+    COMPOSITE_RUBRICS,
     LEGACY_RUBRICS,
-    NEGATIVE_RUBRICS,
-    POSITIVE_RUBRICS,
     CoTEvaluation,
     EvaluationResult,
     RubricInfo,
@@ -27,8 +26,9 @@ def __getattr__(name: str):
     """Lazy load inspect-ai components."""
     if name in (
         "cot_quality_eval",
-        "cot_quality_positive",
-        "cot_quality_negative",
+        "cot_quality_legacy",
+        "cot_quality_composite",
+        "cot_quality_comp_and_legacy",
         "load_cot_dataset",
         "create_rubric_scorer",
         "create_all_scorers",
@@ -58,14 +58,14 @@ __all__ = [
     "RubricType",
     # Rubric collections
     "ALL_RUBRICS",
-    "POSITIVE_RUBRICS",
-    "NEGATIVE_RUBRICS",
+    "COMPOSITE_RUBRICS",
     "LEGACY_RUBRICS",
     "get_rubric_by_id",
     # Inspect-AI integration
     "cot_quality_eval",
-    "cot_quality_positive",
-    "cot_quality_negative",
+    "cot_quality_legacy",
+    "cot_quality_composite",
+    "cot_quality_comp_and_legacy",
     "load_cot_dataset",
     "create_rubric_scorer",
     "create_all_scorers",

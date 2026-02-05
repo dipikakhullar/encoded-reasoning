@@ -35,11 +35,11 @@ from inspect_ai.solver import Generate, Solver, TaskState, solver
 
 try:
     from .evaluate import load_prompt, parse_evaluation_response
-    from .schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from .schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, RubricInfo, RubricType
 except ImportError:
     # Support running directly via inspect eval
     from cot_quality_metrics.evaluate import load_prompt, parse_evaluation_response
-    from cot_quality_metrics.schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, NEGATIVE_RUBRICS, POSITIVE_RUBRICS, RubricInfo, RubricType
+    from cot_quality_metrics.schemas import ALL_RUBRICS, COMPOSITE_RUBRICS, LEGACY_RUBRICS, RubricInfo, RubricType
 
 # Project root: encoded-reasoning/
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -417,42 +417,6 @@ def cot_quality_eval(
 
     # Create scorers
     scorers = create_all_scorers(rubric_ids=rubric_id_list)
-
-    return Task(
-        dataset=dataset,
-        solver=[passthrough()],
-        scorer=scorers,
-    )
-
-
-@task
-def cot_quality_positive(data_dir: str | None = None) -> Task:
-    """Evaluate only positive rubrics (epistemic virtues, 0-5 scale)."""
-    rubric_ids = [r.id for r in POSITIVE_RUBRICS]
-
-    dataset = load_cot_dataset(
-        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-    )
-
-    scorers = create_all_scorers(rubric_ids=rubric_ids)
-
-    return Task(
-        dataset=dataset,
-        solver=[passthrough()],
-        scorer=scorers,
-    )
-
-
-@task
-def cot_quality_negative(data_dir: str | None = None) -> Task:
-    """Evaluate only negative rubrics (anti-patterns, 0 to -5 scale)."""
-    rubric_ids = [r.id for r in NEGATIVE_RUBRICS]
-
-    dataset = load_cot_dataset(
-        data_dir=Path(data_dir) if data_dir else DEFAULT_DATA_DIR,
-    )
-
-    scorers = create_all_scorers(rubric_ids=rubric_ids)
 
     return Task(
         dataset=dataset,

@@ -11,18 +11,74 @@ Usage:
 """
 
 import argparse
+import gzip
 import json
 import random
+import re
 import statistics
 import sys
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from transformers import AutoTokenizer
+
+
+# =============================================================================
+# REPETITION METRICS
+# =============================================================================
+
+def tokenize_text(text: str) -> list[str]:
+    """Simple word tokenization."""
+    return re.findall(r'\b\w+\b', text.lower())
+
+
+def get_ngrams(tokens: list[str], n: int) -> list[tuple]:
+    """Extract n-grams from token list."""
+    return [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+
+
+def trigram_repetition_rate(text: str) -> float:
+    """Fraction of unique trigrams that appear more than once.
+
+    Higher = more repetitive = worse quality.
+    """
+    tokens = tokenize_text(text)
+    ngrams = get_ngrams(tokens, 3)
+    if not ngrams:
+        return 0.0
+    counts = Counter(ngrams)
+    repeated = sum(1 for count in counts.values() if count > 1)
+    return repeated / len(counts) if counts else 0.0
+
+
+def compression_ratio(text: str) -> float:
+    """Ratio of gzip-compressed to original size.
+
+    Lower = more compressible = more repetitive = worse quality.
+    """
+    if not text:
+        return 1.0
+    encoded = text.encode('utf-8')
+    compressed = gzip.compress(encoded)
+    return len(compressed) / len(encoded)
+
+
+def compute_repetition_metrics(text: str) -> dict[str, float]:
+    """Compute repetition metrics for a text."""
+    return {
+        "trigram_repetition": trigram_repetition_rate(text),
+        "compression_ratio": compression_ratio(text),
+    }
+
+
+# Repetition metrics (added to samples, not LLM-judged)
+REPETITION_METRICS = {"trigram_repetition", "compression_ratio"}
+
+# =============================================================================
 
 
 # Selection rules (must match sample_rollouts.py)
@@ -42,8 +98,18 @@ SELECTION_RULES = {
     "random": lambda rollouts: random.choice(rollouts),
 }
 
-# Negative rubrics are shifted by +5 to make them comparable to positive ones
-NEGATIVE_RUBRICS = {"fake_rigor"}
+# Rubric categories for normalization to 0-1 scale
+NEGATIVE_RUBRICS = {"fake_rigor"}  # 0 to -5 scale, shift by +5 then /5
+GDM_RUBRICS = {"gdm_legibility", "gdm_coverage"}  # 0-4 scale, /4
+POSITIVE_RUBRICS_0_5 = {  # 0-5 scale, /5
+    "active_investigation", "epistemic_honesty", "adaptive_process",
+    "reportive_fidelity", "noticing_confusion", "live_updating",
+    "discriminative_experiment_design", "appropriate_stopping",
+    "generativity_under_stuckness", "error_metabolism", "calibration",
+    "problem_decomposition", "assumption_surfacing", "negative_space_awareness",
+    "authenticity", "contact_with_reality", "process_conclusion_integrity",
+    "sufficiency_of_investigation", "provenance_transparency",
+}
 
 # Default model for tokenization (matches rollouts)
 DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
@@ -62,20 +128,55 @@ def count_tokens(text: str, model_name: str = DEFAULT_MODEL) -> int:
 
 
 def normalize_score(rubric: str, value: float) -> float:
-    """Normalize score: shift negative rubrics by +5 to positive scale."""
+    """Normalize score to 0-1 scale where higher is always better.
+
+    - Negative rubrics (0 to -5): shift by +5, then /5
+    - GDM rubrics (0-4): /4
+    - Positive rubrics (0-5): /5
+    - trigram_repetition (0-1, higher=worse): invert to 1-value
+    - compression_ratio (0-1, higher=better): keep as-is
+    """
     if rubric in NEGATIVE_RUBRICS:
-        return value + 5
-    return value
+        return (value + 5) / 5
+    elif rubric in GDM_RUBRICS:
+        return value / 4
+    elif rubric == "trigram_repetition":
+        return 1 - value  # Invert so higher = better (less repetitive)
+    elif rubric == "compression_ratio":
+        return value  # Already 0-1, higher = better (less compressible)
+    elif rubric in POSITIVE_RUBRICS_0_5:
+        return value / 5
+    else:
+        # Unknown rubric, assume 0-5 scale
+        return value / 5
 
 
-def extract_samples_from_eval(eval_path: Path) -> list[dict]:
-    """Extract all samples from eval file."""
+def extract_samples_from_eval(eval_path: Path, add_repetition_metrics: bool = True) -> list[dict]:
+    """Extract all samples from eval file.
+
+    Args:
+        eval_path: Path to the .eval file
+        add_repetition_metrics: If True, compute and add trigram_repetition and
+            compression_ratio metrics to each sample's scores.
+    """
     samples = []
     with zipfile.ZipFile(eval_path, 'r') as zf:
         for name in zf.namelist():
             if name.startswith("samples/") and name.endswith(".json"):
                 with zf.open(name) as f:
-                    samples.append(json.load(f))
+                    data = json.load(f)
+
+                    # Add repetition metrics computed from the CoT text
+                    if add_repetition_metrics:
+                        cot_text = data.get("input", "")
+                        if isinstance(cot_text, str) and cot_text:
+                            rep_metrics = compute_repetition_metrics(cot_text)
+                            if "scores" not in data:
+                                data["scores"] = {}
+                            for metric_name, value in rep_metrics.items():
+                                data["scores"][metric_name] = {"value": value}
+
+                    samples.append(data)
     return samples
 
 
@@ -93,13 +194,16 @@ def group_samples_by_problem(samples: list[dict]) -> dict[tuple, list[dict]]:
 
     Returns:
         {(alpha, problem_idx): [list of rollout samples]}
+
+    If alpha is not present in metadata, uses "none" as a placeholder
+    to support single-condition evals.
     """
     groups = defaultdict(list)
     for s in samples:
         meta = s.get("metadata", {})
-        alpha = meta.get("alpha")
+        alpha = meta.get("alpha", "none")  # Default to "none" if no alpha
         prob_idx = meta.get("problem_idx")
-        if alpha is not None and prob_idx is not None:
+        if prob_idx is not None:
             groups[(alpha, prob_idx)].append(s)
     return dict(groups)
 
@@ -230,7 +334,7 @@ def save_best_of_n_plot(
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
     ax.grid(True, alpha=0.3)
     ax.set_xticks(n_values)
-    ax.set_ylim(0, 5)
+    ax.set_ylim(0, 1.2)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -278,7 +382,7 @@ def save_aggregate_best_of_n_plot(
     ax.legend(loc='best', fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_xticks(n_values)
-    ax.set_ylim(0, 5)
+    ax.set_ylim(0, 1.2)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -299,11 +403,10 @@ def save_grid_by_alpha(
     # Group by alpha first
     alpha_groups = defaultdict(list)
     for s in samples:
-        alpha = s.get("metadata", {}).get("alpha")
-        if alpha is not None:
-            alpha_groups[alpha].append(s)
+        alpha = s.get("metadata", {}).get("alpha", "none")  # Default to "none"
+        alpha_groups[alpha].append(s)
 
-    alpha_values = sorted(alpha_groups.keys())
+    alpha_values = sorted(alpha_groups.keys(), key=lambda x: (x == "none", x))
     if not alpha_values:
         return
 
@@ -388,7 +491,7 @@ def save_grid_by_alpha(
         ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
-        ax.set_ylim(0, 5)
+        ax.set_ylim(0, 1.2)
 
     # Hide unused
     for idx in range(n_alphas, n_rows * n_cols):
@@ -502,11 +605,10 @@ def save_individual_metrics_grid_by_alpha(
     # Group by alpha first
     alpha_groups = defaultdict(list)
     for s in samples:
-        alpha = s.get("metadata", {}).get("alpha")
-        if alpha is not None:
-            alpha_groups[alpha].append(s)
+        alpha = s.get("metadata", {}).get("alpha", "none")
+        alpha_groups[alpha].append(s)
 
-    alpha_values = sorted(alpha_groups.keys())
+    alpha_values = sorted(alpha_groups.keys(), key=lambda x: (x == "none", x))
     if not alpha_values:
         return
 
@@ -562,7 +664,7 @@ def save_individual_metrics_grid_by_alpha(
         ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
-        ax.set_ylim(0, 5)
+        ax.set_ylim(0, 1.2)
 
     # Hide unused
     for idx in range(n_alphas, n_rows * n_cols):
@@ -606,11 +708,10 @@ def save_token_count_grid_by_alpha(
     # Group by alpha first
     alpha_groups = defaultdict(list)
     for s in samples:
-        alpha = s.get("metadata", {}).get("alpha")
-        if alpha is not None:
-            alpha_groups[alpha].append(s)
+        alpha = s.get("metadata", {}).get("alpha", "none")
+        alpha_groups[alpha].append(s)
 
-    alpha_values = sorted(alpha_groups.keys())
+    alpha_values = sorted(alpha_groups.keys(), key=lambda x: (x == "none", x))
     if not alpha_values:
         return
 
@@ -703,6 +804,91 @@ def save_token_count_grid_by_alpha(
         title += f"\n({', '.join(subtitle_parts)})"
 
     fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def save_metrics_vs_alpha(
+    samples: list[dict],
+    rubrics: list[str],
+    n: int,
+    rule: str,
+    seed: int,
+    output_path: Path,
+    target_model: str = "",
+    judge_model: str = "",
+) -> None:
+    """Save plot showing all metrics vs alpha (x-axis) for fixed n.
+
+    This shows how metrics degrade as corruption (alpha) increases.
+    """
+    # Group by alpha
+    alpha_groups = defaultdict(list)
+    for s in samples:
+        alpha = s.get("metadata", {}).get("alpha")
+        if alpha is not None:  # Only include samples with actual alpha values
+            alpha_groups[alpha].append(s)
+
+    alpha_values = sorted(alpha_groups.keys())
+    if len(alpha_values) < 2:  # Need at least 2 alpha values for a meaningful plot
+        return
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    # Color palette
+    colors = plt.cm.tab10(np.linspace(0, 1, len(rubrics)))
+
+    for rubric_idx, rubric in enumerate(rubrics):
+        means = []
+        errs = []
+
+        for alpha in alpha_values:
+            # Group this alpha's samples by problem
+            alpha_samples = alpha_groups[alpha]
+            prob_groups = defaultdict(list)
+            for s in alpha_samples:
+                prob_idx = s.get("metadata", {}).get("problem_idx")
+                if prob_idx is not None:
+                    prob_groups[prob_idx].append(s)
+
+            # Compute scores for this alpha
+            rng = random.Random(seed)
+            values = []
+
+            for prob_idx, rollouts in sorted(prob_groups.items()):
+                winner = simulate_best_of_n(rollouts, n, rule, rng)
+                score = winner.get("scores", {}).get(rubric, {}).get("value")
+                if score is not None:
+                    values.append(normalize_score(rubric, score))
+
+            means.append(statistics.mean(values) if values else 0)
+            errs.append(
+                statistics.stdev(values) / (len(values) ** 0.5)
+                if len(values) > 1 else 0
+            )
+
+        ax.errorbar(alpha_values, means, yerr=errs, label=rubric, marker='o',
+                    capsize=3, linewidth=2, markersize=6, color=colors[rubric_idx])
+
+    ax.set_xlabel("Alpha (corruption level)", fontsize=12)
+    ax.set_ylabel("Score (normalized 0-1, higher=better)", fontsize=12)
+    ax.set_xticks(alpha_values)
+    ax.set_ylim(0, 1.2)
+    ax.grid(True, alpha=0.3)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+
+    title = f"All Metrics vs Alpha (best-of-{n})"
+    subtitle_parts = []
+    if target_model:
+        subtitle_parts.append(f"Target: {target_model}")
+    if judge_model:
+        subtitle_parts.append(f"Judge: {judge_model}")
+    if subtitle_parts:
+        title += f"\n({', '.join(subtitle_parts)})"
+
+    ax.set_title(title, fontsize=14, fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -836,6 +1022,14 @@ def main():
                                     token_grid_path, target_model=target_model,
                                     judge_model=judge_model)
     print(f"Token count grid saved to: {token_grid_path}")
+
+    # 4. Metrics vs alpha (standalone plot at n=1 and max n)
+    for n in [1, max(args.n_values)]:
+        metrics_vs_alpha_path = output_dir / f"{base_name}_metrics_vs_alpha_n{n}.png"
+        save_metrics_vs_alpha(samples, rubrics, n, args.rule, args.seed,
+                              metrics_vs_alpha_path, target_model=target_model,
+                              judge_model=judge_model)
+        print(f"Metrics vs alpha (n={n}) saved to: {metrics_vs_alpha_path}")
 
     print("\nDone.")
     return 0

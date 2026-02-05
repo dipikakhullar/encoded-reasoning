@@ -6,10 +6,13 @@ Usage:
     uv run python cot_quality_metrics/src/standalone_scripts/analyze_eval.py path/to/file.eval
 """
 
+import gzip
 import json
+import re
 import statistics
 import sys
 import zipfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +20,66 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.spatial.distance import squareform
+
+
+# =============================================================================
+# REPETITION METRICS
+# =============================================================================
+# These metrics detect corrupted/repetitive CoT traces that LLM judges may miss.
+
+
+def tokenize(text: str) -> list[str]:
+    """Simple word tokenization."""
+    return re.findall(r'\b\w+\b', text.lower())
+
+
+def get_ngrams(tokens: list[str], n: int) -> list[tuple]:
+    """Extract n-grams from token list."""
+    return [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+
+
+def trigram_repetition_rate(text: str) -> float:
+    """Fraction of unique trigrams that appear more than once.
+
+    Higher values indicate more repetitive text.
+    Clean CoT: ~0.05-0.10
+    Corrupted CoT: ~0.30-0.50
+    """
+    tokens = tokenize(text)
+    ngrams = get_ngrams(tokens, 3)
+    if not ngrams:
+        return 0.0
+    counts = Counter(ngrams)
+    repeated = sum(1 for count in counts.values() if count > 1)
+    return repeated / len(counts) if counts else 0.0
+
+
+def compression_ratio(text: str) -> float:
+    """Ratio of gzip-compressed to original size.
+
+    Lower values indicate more compressible (repetitive) text.
+    Clean CoT: ~0.40-0.50
+    Corrupted CoT: ~0.15-0.25
+    """
+    if not text:
+        return 1.0
+    encoded = text.encode('utf-8')
+    compressed = gzip.compress(encoded)
+    return len(compressed) / len(encoded)
+
+
+def compute_repetition_metrics(text: str) -> dict[str, float]:
+    """Compute all repetition metrics for a text.
+
+    Returns dict with metric names and values, ready to be added to scores.
+    """
+    return {
+        "trigram_repetition": trigram_repetition_rate(text),
+        "compression_ratio": compression_ratio(text),
+    }
+
+
+# =============================================================================
 
 # Rubric definitions (used for categorization when present)
 POSITIVE_RUBRICS = [
@@ -45,6 +108,9 @@ GDM_RUBRICS = ["gdm_legibility", "gdm_coverage"]
 COMPOSITE_RUBRICS = [
     "fake_rigor", "too_clean", "active_investigation", "epistemic_honesty", "adaptive_process",
 ]
+
+# Repetition-based metrics (computed from text, not LLM-judged)
+REPETITION_METRICS = ["trigram_repetition", "compression_ratio"]
 
 # Short names for correlation matrix display
 RUBRIC_SHORT_NAMES = {
@@ -88,17 +154,20 @@ RUBRIC_SHORT_NAMES = {
     "active_investigation": "active_inv",
     "epistemic_honesty": "epist_hon",
     "adaptive_process": "adapt_proc",
+    # Repetition metrics
+    "trigram_repetition": "trigram_rep",
+    "compression_ratio": "compress",
 }
 
 
-def detect_rubrics_from_samples(samples: list[dict]) -> tuple[list[str], list[str], list[str]]:
+def detect_rubrics_from_samples(samples: list[dict]) -> tuple[list[str], list[str], list[str], list[str]]:
     """Detect which rubrics are present in the eval samples.
 
     Returns:
-        Tuple of (positive_rubrics, negative_rubrics, legacy_rubrics) found in samples.
+        Tuple of (positive_rubrics, negative_rubrics, legacy_rubrics, repetition_metrics) found in samples.
     """
     if not samples:
-        return [], [], []
+        return [], [], [], []
 
     # Get all rubric names from first sample
     all_found = list(samples[0].get("scores", {}).keys())
@@ -107,13 +176,14 @@ def detect_rubrics_from_samples(samples: list[dict]) -> tuple[list[str], list[st
     positive = [r for r in all_found if r in POSITIVE_RUBRICS]
     negative = [r for r in all_found if r in NEGATIVE_RUBRICS]
     legacy = [r for r in all_found if r in GDM_RUBRICS]
+    repetition = [r for r in all_found if r in REPETITION_METRICS]
 
     # Any uncategorized go to positive (safe default for 0-5 scale)
-    categorized = set(positive + negative + legacy)
+    categorized = set(positive + negative + legacy + repetition)
     uncategorized = [r for r in all_found if r not in categorized]
     positive.extend(uncategorized)
 
-    return positive, negative, legacy
+    return positive, negative, legacy, repetition
 
 
 def pearson_correlation(x: list[float], y: list[float]) -> float | None:
@@ -493,14 +563,31 @@ def find_most_recent_eval(logs_dir: Path) -> Path | None:
     return max(eval_files, key=lambda p: p.stat().st_mtime)
 
 
-def extract_samples_from_eval(eval_path: Path) -> list[dict]:
-    """Extract sample data from an inspect-ai .eval zip file."""
+def extract_samples_from_eval(eval_path: Path, add_repetition_metrics: bool = True) -> list[dict]:
+    """Extract sample data from an inspect-ai .eval zip file.
+
+    Args:
+        eval_path: Path to the .eval file
+        add_repetition_metrics: If True, compute and add trigram_repetition and
+            compression_ratio metrics to each sample's scores based on the input text.
+    """
     samples = []
     with zipfile.ZipFile(eval_path, 'r') as zf:
         for name in zf.namelist():
             if name.startswith("samples/") and name.endswith(".json"):
                 with zf.open(name) as f:
                     data = json.load(f)
+
+                    # Add repetition metrics computed from the CoT text
+                    if add_repetition_metrics:
+                        cot_text = data.get("input", "")
+                        if isinstance(cot_text, str) and cot_text:
+                            rep_metrics = compute_repetition_metrics(cot_text)
+                            if "scores" not in data:
+                                data["scores"] = {}
+                            for metric_name, value in rep_metrics.items():
+                                data["scores"][metric_name] = {"value": value}
+
                     samples.append(data)
     return samples
 
@@ -519,8 +606,8 @@ def generate_analysis_report(eval_path: Path, samples: list[dict], header: dict)
     lines = []
 
     # Detect which rubrics are present
-    positive_found, negative_found, legacy_found = detect_rubrics_from_samples(samples)
-    all_rubrics_found = positive_found + negative_found + legacy_found
+    positive_found, negative_found, legacy_found, repetition_found = detect_rubrics_from_samples(samples)
+    all_rubrics_found = positive_found + negative_found + legacy_found + repetition_found
     non_legacy_rubrics = positive_found + negative_found
 
     # Header
@@ -544,7 +631,8 @@ def generate_analysis_report(eval_path: Path, samples: list[dict], header: dict)
     lines.append(f"Positive rubrics ({len(positive_found)}): {', '.join(positive_found) if positive_found else 'None'}")
     lines.append(f"Negative rubrics ({len(negative_found)}): {', '.join(negative_found) if negative_found else 'None'}")
     lines.append(f"Legacy rubrics ({len(legacy_found)}): {', '.join(legacy_found) if legacy_found else 'None'}")
-    lines.append(f"Total: {len(all_rubrics_found)} rubrics")
+    lines.append(f"Repetition metrics ({len(repetition_found)}): {', '.join(repetition_found) if repetition_found else 'None'}")
+    lines.append(f"Total: {len(all_rubrics_found)} metrics")
     lines.append("")
 
     # Summary statistics per rubric
@@ -639,7 +727,7 @@ def generate_analysis_report(eval_path: Path, samples: list[dict], header: dict)
     lines.append("END OF REPORT")
     lines.append("=" * 80)
 
-    return "\n".join(lines), positive_found, negative_found, legacy_found
+    return "\n".join(lines), positive_found, negative_found, legacy_found, repetition_found
 
 
 def main():
@@ -673,8 +761,8 @@ def main():
         sys.exit(1)
 
     # Generate report (also returns detected rubrics for visualizations)
-    report, positive_found, negative_found, legacy_found = generate_analysis_report(eval_path, samples, header)
-    all_rubrics_found = positive_found + negative_found + legacy_found
+    report, positive_found, negative_found, legacy_found, repetition_found = generate_analysis_report(eval_path, samples, header)
+    all_rubrics_found = positive_found + negative_found + legacy_found + repetition_found
     non_legacy_rubrics = positive_found + negative_found
 
     # Save to analyses directory

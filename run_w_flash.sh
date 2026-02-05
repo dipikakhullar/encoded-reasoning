@@ -5,5 +5,5 @@
 uv run inspect eval \
     cot_quality_metrics/src/cot_quality_metrics/inspect_task.py@cot_quality_comp_and_legacy \
     --model openrouter/google/gemini-2.5-flash \
-    --sample-shuffle 42 --limit 500 --max-connections 50 \
+    --sample-shuffle 42 --limit 500 --max-connections 150 \
     2>&1
