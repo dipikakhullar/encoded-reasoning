@@ -411,19 +411,28 @@ def save_grid_by_alpha(
         return
 
     n_alphas = len(alpha_values)
-    n_cols = 2
-    n_rows = (n_alphas + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
-    if n_rows == 1:
-        axes = axes.reshape(1, -1)
+    # Adjust layout for single vs multiple subplots
+    if n_alphas == 1:
+        fig, ax_single = plt.subplots(figsize=(10, 6))
+        axes = np.array([[ax_single, None]])  # Dummy 2D array for consistent indexing
+    else:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
 
     gdm_rubrics = {"gdm_legibility", "gdm_coverage"}
     non_gdm = [r for r in rubrics if r not in gdm_rubrics]
 
     for idx, alpha in enumerate(alpha_values):
-        row, col = idx // n_cols, idx % n_cols
-        ax = axes[row, col]
+        if n_alphas == 1:
+            ax = axes[0, 0]
+        else:
+            n_cols = 2
+            row, col = idx // n_cols, idx % n_cols
+            ax = axes[row, col]
 
         # Group this alpha's samples by problem
         alpha_samples = alpha_groups[alpha]
@@ -488,22 +497,28 @@ def save_grid_by_alpha(
 
         ax.set_xlabel("n (best-of-n)", fontsize=10)
         ax.set_ylabel("Score", fontsize=10)
-        ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
+        subplot_title = f"alpha={alpha}" if alpha != "none" else "Best-of-n Scores"
+        ax.set_title(subplot_title, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
         ax.set_ylim(0, 1.2)
 
-    # Hide unused
-    for idx in range(n_alphas, n_rows * n_cols):
-        row, col = idx // n_cols, idx % n_cols
-        axes[row, col].set_visible(False)
+    # Hide unused subplots (only for multi-plot grids)
+    if n_alphas > 1:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        for idx in range(n_alphas, n_rows * n_cols):
+            row, col = idx // n_cols, idx % n_cols
+            axes[row, col].set_visible(False)
 
     # Legend
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.12, 0.5), fontsize=9)
+    legend_anchor = (1.02, 0.5) if n_alphas == 1 else (1.12, 0.5)
+    fig.legend(handles, labels, loc='center right', bbox_to_anchor=legend_anchor, fontsize=9)
 
-    # Title
-    title = "Best-of-n Scores by Alpha"
+    # Title - only mention alpha if we have real alpha values
+    has_real_alpha = any(a != "none" for a in alpha_values)
+    title = "Best-of-n Scores by Alpha" if has_real_alpha else "Best-of-n Scores"
     subtitle_parts = []
     if target_model:
         subtitle_parts.append(f"Target: {target_model}")
@@ -613,19 +628,28 @@ def save_individual_metrics_grid_by_alpha(
         return
 
     n_alphas = len(alpha_values)
-    n_cols = 2
-    n_rows = (n_alphas + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
-    if n_rows == 1:
-        axes = axes.reshape(1, -1)
+    # Adjust layout for single vs multiple subplots
+    if n_alphas == 1:
+        fig, ax_single = plt.subplots(figsize=(10, 6))
+        axes = np.array([[ax_single, None]])
+    else:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
 
     # Color palette for rubrics
     colors = plt.cm.tab10(np.linspace(0, 1, len(rubrics)))
 
     for idx, alpha in enumerate(alpha_values):
-        row, col = idx // n_cols, idx % n_cols
-        ax = axes[row, col]
+        if n_alphas == 1:
+            ax = axes[0, 0]
+        else:
+            n_cols = 2
+            row, col = idx // n_cols, idx % n_cols
+            ax = axes[row, col]
 
         # Group this alpha's samples by problem
         alpha_samples = alpha_groups[alpha]
@@ -661,22 +685,28 @@ def save_individual_metrics_grid_by_alpha(
 
         ax.set_xlabel("n (best-of-n)", fontsize=10)
         ax.set_ylabel("Score", fontsize=10)
-        ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
+        subplot_title = f"alpha={alpha}" if alpha != "none" else "Individual Metrics"
+        ax.set_title(subplot_title, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
         ax.set_ylim(0, 1.2)
 
-    # Hide unused
-    for idx in range(n_alphas, n_rows * n_cols):
-        row, col = idx // n_cols, idx % n_cols
-        axes[row, col].set_visible(False)
+    # Hide unused subplots (only for multi-plot grids)
+    if n_alphas > 1:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        for idx in range(n_alphas, n_rows * n_cols):
+            row, col = idx // n_cols, idx % n_cols
+            axes[row, col].set_visible(False)
 
     # Legend outside
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.15, 0.5), fontsize=8)
+    legend_anchor = (1.02, 0.5) if n_alphas == 1 else (1.15, 0.5)
+    fig.legend(handles, labels, loc='center right', bbox_to_anchor=legend_anchor, fontsize=8)
 
-    # Title
-    title = "Individual Metrics by Alpha"
+    # Title - only mention alpha if we have real alpha values
+    has_real_alpha = any(a != "none" for a in alpha_values)
+    title = "Individual Metrics by Alpha" if has_real_alpha else "Individual Metrics vs n"
     subtitle_parts = []
     if target_model:
         subtitle_parts.append(f"Target: {target_model}")
@@ -716,12 +746,17 @@ def save_token_count_grid_by_alpha(
         return
 
     n_alphas = len(alpha_values)
-    n_cols = 2
-    n_rows = (n_alphas + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
-    if n_rows == 1:
-        axes = axes.reshape(1, -1)
+    # Adjust layout for single vs multiple subplots
+    if n_alphas == 1:
+        fig, ax_single = plt.subplots(figsize=(10, 6))
+        axes = np.array([[ax_single, None]])
+    else:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
 
     # Get model name for tokenizer
     model_name = samples[0].get("metadata", {}).get("model", DEFAULT_MODEL)
@@ -769,8 +804,12 @@ def save_token_count_grid_by_alpha(
 
     # Second pass: plot with consistent y-axis
     for idx, alpha in enumerate(alpha_values):
-        row, col = idx // n_cols, idx % n_cols
-        ax = axes[row, col]
+        if n_alphas == 1:
+            ax = axes[0, 0]
+        else:
+            n_cols = 2
+            row, col = idx // n_cols, idx % n_cols
+            ax = axes[row, col]
 
         data = all_token_data[alpha]
         ax.errorbar(n_values, data["means"], yerr=data["errs"],
@@ -779,22 +818,28 @@ def save_token_count_grid_by_alpha(
 
         ax.set_xlabel("n (best-of-n)", fontsize=10)
         ax.set_ylabel("−Token Count (reward)", fontsize=10)
-        ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
+        subplot_title = f"alpha={alpha}" if alpha != "none" else "Token Count"
+        ax.set_title(subplot_title, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.set_xticks(n_values)
         ax.set_ylim(y_min, y_max)
 
-    # Hide unused
-    for idx in range(n_alphas, n_rows * n_cols):
-        row, col = idx // n_cols, idx % n_cols
-        axes[row, col].set_visible(False)
+    # Hide unused subplots (only for multi-plot grids)
+    if n_alphas > 1:
+        n_cols = 2
+        n_rows = (n_alphas + n_cols - 1) // n_cols
+        for idx in range(n_alphas, n_rows * n_cols):
+            row, col = idx // n_cols, idx % n_cols
+            axes[row, col].set_visible(False)
 
     # Legend
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.12, 0.5), fontsize=9)
+    legend_anchor = (1.02, 0.5) if n_alphas == 1 else (1.12, 0.5)
+    fig.legend(handles, labels, loc='center right', bbox_to_anchor=legend_anchor, fontsize=9)
 
-    # Title
-    title = "Best-of-n Token Count by Alpha"
+    # Title - only mention alpha if we have real alpha values
+    has_real_alpha = any(a != "none" for a in alpha_values)
+    title = "Best-of-n Token Count by Alpha" if has_real_alpha else "Best-of-n Token Count"
     subtitle_parts = []
     if target_model:
         subtitle_parts.append(f"Target: {target_model}")
@@ -974,10 +1019,16 @@ def main():
 
     print(f"Total samples: {len(samples)}")
 
-    # Extract model names
-    target_model = samples[0].get("metadata", {}).get("model", "").split("/")[-1]
+    # Extract model names from header
+    eval_info = header.get("eval", {})
+    target_model = eval_info.get("model", "").split("/")[-1]
     target_model = target_model.replace("-Instruct", "")
-    judge_model = header.get("eval", {}).get("model", "").split("/")[-1]
+    # Judge model is in task_args, fallback to sample metadata
+    task_args = eval_info.get("task_args", {})
+    judge_model = task_args.get("judge_model", "").split("/")[-1]
+    if not judge_model:
+        # Fallback for older format
+        judge_model = samples[0].get("metadata", {}).get("model", "").split("/")[-1]
 
     print(f"Target model: {target_model}")
     print(f"Judge model: {judge_model}")
@@ -992,7 +1043,9 @@ def main():
         alpha = s.get("metadata", {}).get("alpha")
         if alpha is not None:
             alpha_groups[alpha].append(s)
-    print(f"Alpha values: {sorted(alpha_groups.keys())}")
+    alpha_values = sorted(alpha_groups.keys())
+    has_alpha = len(alpha_values) > 0
+    print(f"Alpha values: {alpha_values}")
     print(f"Problems per alpha: {len(set(s.get('metadata', {}).get('problem_idx') for s in samples))}")
 
     # Output directory
@@ -1000,36 +1053,38 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     base_name = f"best_of_n_{eval_path.stem}"
+    suffix = "_by_alpha" if has_alpha else ""
 
-    # Save plots (all by-alpha, no cross-alpha averaging)
-    # 1. Grid by alpha (aggregate scores)
-    grid_path = output_dir / f"{base_name}_grid_by_alpha.png"
+    # Save plots
+    # 1. Grid (aggregate scores)
+    grid_path = output_dir / f"{base_name}_grid{suffix}.png"
     save_grid_by_alpha(args.n_values, samples, rubrics, args.rule, args.seed,
                        grid_path, target_model=target_model, judge_model=judge_model)
-    print(f"\nGrid by alpha saved to: {grid_path}")
+    print(f"\nGrid saved to: {grid_path}")
 
-    # 2. Grid by alpha (individual metrics)
-    metrics_grid_path = output_dir / f"{base_name}_metrics_grid_by_alpha.png"
+    # 2. Individual metrics grid
+    metrics_grid_path = output_dir / f"{base_name}_metrics_grid{suffix}.png"
     save_individual_metrics_grid_by_alpha(args.n_values, samples, rubrics, args.rule,
                                           args.seed, metrics_grid_path,
                                           target_model=target_model, judge_model=judge_model)
     print(f"Individual metrics grid saved to: {metrics_grid_path}")
 
-    # 3. Token count grid by alpha
+    # 3. Token count grid
     print("\nCounting tokens (loading tokenizer)...")
-    token_grid_path = output_dir / f"{base_name}_tokens_grid_by_alpha.png"
+    token_grid_path = output_dir / f"{base_name}_tokens_grid{suffix}.png"
     save_token_count_grid_by_alpha(args.n_values, samples, args.rule, args.seed,
                                     token_grid_path, target_model=target_model,
                                     judge_model=judge_model)
     print(f"Token count grid saved to: {token_grid_path}")
 
-    # 4. Metrics vs alpha (standalone plot at n=1 and max n)
-    for n in [1, max(args.n_values)]:
-        metrics_vs_alpha_path = output_dir / f"{base_name}_metrics_vs_alpha_n{n}.png"
-        save_metrics_vs_alpha(samples, rubrics, n, args.rule, args.seed,
-                              metrics_vs_alpha_path, target_model=target_model,
-                              judge_model=judge_model)
-        print(f"Metrics vs alpha (n={n}) saved to: {metrics_vs_alpha_path}")
+    # 4. Metrics vs alpha (only if multiple alpha values)
+    if has_alpha:
+        for n in [1, max(args.n_values)]:
+            metrics_vs_alpha_path = output_dir / f"{base_name}_metrics_vs_alpha_n{n}.png"
+            save_metrics_vs_alpha(samples, rubrics, n, args.rule, args.seed,
+                                  metrics_vs_alpha_path, target_model=target_model,
+                                  judge_model=judge_model)
+            print(f"Metrics vs alpha (n={n}) saved to: {metrics_vs_alpha_path}")
 
     print("\nDone.")
     return 0
