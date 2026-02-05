@@ -17,10 +17,12 @@ import statistics
 import sys
 import zipfile
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from transformers import AutoTokenizer
 
 
 # Selection rules (must match sample_rollouts.py)
@@ -42,6 +44,21 @@ SELECTION_RULES = {
 
 # Negative rubrics are shifted by +5 to make them comparable to positive ones
 NEGATIVE_RUBRICS = {"fake_rigor"}
+
+# Default model for tokenization (matches rollouts)
+DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
+
+
+@lru_cache(maxsize=1)
+def get_tokenizer(model_name: str = DEFAULT_MODEL) -> AutoTokenizer:
+    """Load and cache the tokenizer."""
+    return AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+
+def count_tokens(text: str, model_name: str = DEFAULT_MODEL) -> int:
+    """Count tokens in text using the model's tokenizer."""
+    tokenizer = get_tokenizer(model_name)
+    return len(tokenizer.encode(text))
 
 
 def normalize_score(rubric: str, value: float) -> float:
@@ -401,6 +418,286 @@ def save_grid_by_alpha(
     plt.close()
 
 
+def compute_token_counts_for_n(
+    grouped_samples: dict[tuple, list[dict]],
+    n: int,
+    rule: str,
+    seed: int,
+    model_name: str = DEFAULT_MODEL,
+) -> dict[str, float]:
+    """Compute token count stats for best-of-n across all problems.
+
+    Returns:
+        {"mean": mean_tokens, "stderr": stderr, "neg_mean": -mean_tokens, ...}
+    """
+    rng = random.Random(seed)
+    token_counts = []
+
+    for (alpha, prob_idx), rollouts in sorted(grouped_samples.items()):
+        winner = simulate_best_of_n(rollouts, n, rule, rng)
+        reasoning_text = winner.get("input", "")
+        tokens = count_tokens(reasoning_text, model_name)
+        token_counts.append(tokens)
+
+    if not token_counts:
+        return {"mean": 0, "stderr": 0, "neg_mean": 0, "neg_stderr": 0}
+
+    mean = statistics.mean(token_counts)
+    stderr = statistics.stdev(token_counts) / (len(token_counts) ** 0.5) if len(token_counts) > 1 else 0
+
+    return {
+        "mean": mean,
+        "stderr": stderr,
+        "neg_mean": -mean,
+        "neg_stderr": stderr,
+    }
+
+
+def save_token_count_plot(
+    n_values: list[int],
+    token_results: dict[int, dict[str, float]],
+    output_path: Path,
+    target_model: str = "",
+    judge_model: str = "",
+) -> None:
+    """Plot token count vs n (best-of-n) as negative reward."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    means = [token_results[n]["neg_mean"] for n in n_values]
+    errs = [token_results[n]["neg_stderr"] for n in n_values]
+
+    ax.errorbar(n_values, means, yerr=errs, label="−Token Count",
+               marker='o', capsize=3, linewidth=2, markersize=8, color='purple')
+
+    ax.set_xlabel("n (best-of-n)", fontsize=12)
+    ax.set_ylabel("−Token Count (reward)", fontsize=12)
+
+    title = "Token Count vs Best-of-n"
+    subtitle_parts = []
+    if target_model:
+        subtitle_parts.append(f"Target: {target_model}")
+    if judge_model:
+        subtitle_parts.append(f"Judge: {judge_model}")
+    if subtitle_parts:
+        title += f"\n({', '.join(subtitle_parts)})"
+
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.set_xticks(n_values)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def save_individual_metrics_grid_by_alpha(
+    n_values: list[int],
+    samples: list[dict],
+    rubrics: list[str],
+    rule: str,
+    seed: int,
+    output_path: Path,
+    target_model: str = "",
+    judge_model: str = "",
+) -> None:
+    """Save 2x2 grid showing all individual metrics, one subplot per alpha value."""
+    # Group by alpha first
+    alpha_groups = defaultdict(list)
+    for s in samples:
+        alpha = s.get("metadata", {}).get("alpha")
+        if alpha is not None:
+            alpha_groups[alpha].append(s)
+
+    alpha_values = sorted(alpha_groups.keys())
+    if not alpha_values:
+        return
+
+    n_alphas = len(alpha_values)
+    n_cols = 2
+    n_rows = (n_alphas + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    # Color palette for rubrics
+    colors = plt.cm.tab10(np.linspace(0, 1, len(rubrics)))
+
+    for idx, alpha in enumerate(alpha_values):
+        row, col = idx // n_cols, idx % n_cols
+        ax = axes[row, col]
+
+        # Group this alpha's samples by problem
+        alpha_samples = alpha_groups[alpha]
+        prob_groups = defaultdict(list)
+        for s in alpha_samples:
+            prob_idx = s.get("metadata", {}).get("problem_idx")
+            if prob_idx is not None:
+                prob_groups[prob_idx].append(s)
+
+        # Compute scores for each rubric at each n
+        for rubric_idx, rubric in enumerate(rubrics):
+            means = []
+            errs = []
+
+            for n in n_values:
+                rng = random.Random(seed)
+                values = []
+
+                for prob_idx, rollouts in sorted(prob_groups.items()):
+                    winner = simulate_best_of_n(rollouts, n, rule, rng)
+                    score = winner.get("scores", {}).get(rubric, {}).get("value")
+                    if score is not None:
+                        values.append(normalize_score(rubric, score))
+
+                means.append(statistics.mean(values) if values else 0)
+                errs.append(
+                    statistics.stdev(values) / (len(values) ** 0.5)
+                    if len(values) > 1 else 0
+                )
+
+            ax.errorbar(n_values, means, yerr=errs,
+                        label=rubric, marker='o',
+                        capsize=2, linewidth=1.5, markersize=4, color=colors[rubric_idx])
+
+        ax.set_xlabel("n (best-of-n)", fontsize=10)
+        ax.set_ylabel("Score", fontsize=10)
+        ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.set_xticks(n_values)
+
+    # Hide unused
+    for idx in range(n_alphas, n_rows * n_cols):
+        row, col = idx // n_cols, idx % n_cols
+        axes[row, col].set_visible(False)
+
+    # Legend outside
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.15, 0.5), fontsize=8)
+
+    # Title
+    title = "Individual Metrics by Alpha"
+    subtitle_parts = []
+    if target_model:
+        subtitle_parts.append(f"Target: {target_model}")
+    if judge_model:
+        subtitle_parts.append(f"Judge: {judge_model}")
+    if subtitle_parts:
+        title += f"\n({', '.join(subtitle_parts)})"
+
+    fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def save_token_count_grid_by_alpha(
+    n_values: list[int],
+    samples: list[dict],
+    rule: str,
+    seed: int,
+    output_path: Path,
+    target_model: str = "",
+    judge_model: str = "",
+) -> None:
+    """Save 2x2 grid of token count plots (as -1 * tokens), one per alpha value.
+
+    We plot -1 * tokens because selecting shortest = negative reward for tokens.
+    """
+    # Group by alpha first
+    alpha_groups = defaultdict(list)
+    for s in samples:
+        alpha = s.get("metadata", {}).get("alpha")
+        if alpha is not None:
+            alpha_groups[alpha].append(s)
+
+    alpha_values = sorted(alpha_groups.keys())
+    if not alpha_values:
+        return
+
+    n_alphas = len(alpha_values)
+    n_cols = 2
+    n_rows = (n_alphas + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    # Get model name for tokenizer
+    model_name = samples[0].get("metadata", {}).get("model", DEFAULT_MODEL)
+
+    for idx, alpha in enumerate(alpha_values):
+        row, col = idx // n_cols, idx % n_cols
+        ax = axes[row, col]
+
+        # Group this alpha's samples by problem
+        alpha_samples = alpha_groups[alpha]
+        prob_groups = defaultdict(list)
+        for s in alpha_samples:
+            prob_idx = s.get("metadata", {}).get("problem_idx")
+            if prob_idx is not None:
+                prob_groups[prob_idx].append(s)
+
+        # Compute token counts for each n
+        token_means = []
+        token_errs = []
+
+        for n in n_values:
+            rng = random.Random(seed)
+            token_counts = []
+
+            for prob_idx, rollouts in sorted(prob_groups.items()):
+                winner = simulate_best_of_n(rollouts, n, rule, rng)
+                reasoning_text = winner.get("input", "")
+                tokens = count_tokens(reasoning_text, model_name)
+                # Negative reward: -1 * tokens (shorter is better)
+                token_counts.append(-tokens)
+
+            token_means.append(statistics.mean(token_counts) if token_counts else 0)
+            token_errs.append(
+                statistics.stdev(token_counts) / (len(token_counts) ** 0.5)
+                if len(token_counts) > 1 else 0
+            )
+
+        # Plot
+        ax.errorbar(n_values, token_means, yerr=token_errs,
+                    label="−Token Count", marker='o',
+                    capsize=2, linewidth=1.5, markersize=5, color='purple')
+
+        ax.set_xlabel("n (best-of-n)", fontsize=10)
+        ax.set_ylabel("−Token Count (reward)", fontsize=10)
+        ax.set_title(f"alpha={alpha}", fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.set_xticks(n_values)
+
+    # Hide unused
+    for idx in range(n_alphas, n_rows * n_cols):
+        row, col = idx // n_cols, idx % n_cols
+        axes[row, col].set_visible(False)
+
+    # Legend
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.12, 0.5), fontsize=9)
+
+    # Title
+    title = "Best-of-n Token Count by Alpha"
+    subtitle_parts = []
+    if target_model:
+        subtitle_parts.append(f"Target: {target_model}")
+    if judge_model:
+        subtitle_parts.append(f"Judge: {judge_model}")
+    if subtitle_parts:
+        title += f"\n({', '.join(subtitle_parts)})"
+
+    fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
 def find_most_recent_eval(logs_dir: Path) -> Path | None:
     """Find most recent .eval file."""
     eval_files = list(logs_dir.glob("*.eval"))
@@ -523,23 +820,55 @@ def main():
                                    target_model=target_model, judge_model=judge_model)
     print(f"Aggregate plot saved to: {agg_path}")
 
-    # 3. Grid by alpha
+    # 3. Grid by alpha (aggregate scores)
     grid_path = output_dir / f"{base_name}_grid_by_alpha.png"
     save_grid_by_alpha(args.n_values, samples, rubrics, args.rule, args.seed,
                        grid_path, target_model=target_model, judge_model=judge_model)
     print(f"Grid by alpha saved to: {grid_path}")
 
+    # 3b. Grid by alpha (individual metrics)
+    metrics_grid_path = output_dir / f"{base_name}_metrics_grid_by_alpha.png"
+    save_individual_metrics_grid_by_alpha(args.n_values, samples, rubrics, args.rule,
+                                          args.seed, metrics_grid_path,
+                                          target_model=target_model, judge_model=judge_model)
+    print(f"Individual metrics grid saved to: {metrics_grid_path}")
+
+    # 4. Token count analysis
+    print("\nCounting tokens (loading tokenizer)...")
+    model_name = samples[0].get("metadata", {}).get("model", DEFAULT_MODEL)
+    token_results = {}
+    for n in args.n_values:
+        token_results[n] = compute_token_counts_for_n(
+            grouped, n, args.rule, args.seed, model_name
+        )
+        print(f"  n={n}: mean_tokens={token_results[n]['mean']:.0f}")
+
+    # 4a. Aggregate token count plot
+    token_plot_path = output_dir / f"{base_name}_tokens.png"
+    save_token_count_plot(args.n_values, token_results, token_plot_path,
+                          target_model=target_model, judge_model=judge_model)
+    print(f"Token count plot saved to: {token_plot_path}")
+
+    # 4b. Token count grid by alpha
+    token_grid_path = output_dir / f"{base_name}_tokens_grid_by_alpha.png"
+    save_token_count_grid_by_alpha(args.n_values, samples, args.rule, args.seed,
+                                    token_grid_path, target_model=target_model,
+                                    judge_model=judge_model)
+    print(f"Token count grid saved to: {token_grid_path}")
+
     # Print summary table
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     print("Best-of-n Analysis Summary")
-    print("=" * 60)
-    print(f"{'n':<6} {'Non-GDM Avg':<15} {'GDM Legibility':<15} {'GDM Coverage':<15}")
-    print("-" * 60)
+    print("=" * 80)
+    print(f"{'n':<6} {'Non-GDM Avg':<15} {'GDM Legibility':<15} {'GDM Coverage':<15} {'Tokens':<12}")
+    print("-" * 80)
     for n in args.n_values:
         r = results[n]
+        t = token_results[n]
         print(f"{n:<6} {r.get('non_gdm_avg', 0):>7.2f}±{r.get('non_gdm_avg_stderr', 0):<6.2f}"
               f"{r.get('gdm_legibility', 0):>7.2f}±{r.get('gdm_legibility_stderr', 0):<6.2f}"
-              f"{r.get('gdm_coverage', 0):>7.2f}±{r.get('gdm_coverage_stderr', 0):<6.2f}")
+              f"{r.get('gdm_coverage', 0):>7.2f}±{r.get('gdm_coverage_stderr', 0):<6.2f}"
+              f"{t['mean']:>7.0f}±{t['stderr']:<4.0f}")
 
     return 0
 

@@ -114,6 +114,7 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "torch" },
+    { name = "tqdm" },
     { name = "transformers" },
 ]
 
@@ -124,6 +125,7 @@ requires-dist = [
     { name = "pillow" },
     { name = "scipy" },
     { name = "torch" },
+    { name = "tqdm" },
     { name = "transformers", git = "https://github.com/huggingface/transformers.git" },
 ]
 
