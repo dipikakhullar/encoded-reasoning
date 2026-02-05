@@ -40,6 +40,16 @@ SELECTION_RULES = {
     "random": lambda rollouts: random.choice(rollouts),
 }
 
+# Negative rubrics are shifted by +5 to make them comparable to positive ones
+NEGATIVE_RUBRICS = {"fake_rigor"}
+
+
+def normalize_score(rubric: str, value: float) -> float:
+    """Normalize score: shift negative rubrics by +5 to positive scale."""
+    if rubric in NEGATIVE_RUBRICS:
+        return value + 5
+    return value
+
 
 def extract_samples_from_eval(eval_path: Path) -> list[dict]:
     """Extract all samples from eval file."""
@@ -111,11 +121,11 @@ def compute_scores_for_n(
         # Select winner
         winner = simulate_best_of_n(rollouts, n, rule, rng)
 
-        # Extract scores
+        # Extract scores (normalize negative rubrics)
         for rubric in rubrics:
             score = winner.get("scores", {}).get(rubric, {}).get("value")
             if score is not None:
-                scores[rubric].append(score)
+                scores[rubric].append(normalize_score(rubric, score))
 
     return scores
 
@@ -153,7 +163,7 @@ def compute_aggregate_scores_for_n(
     for (alpha, prob_idx), rollouts in sorted(grouped_samples.items()):
         winner = simulate_best_of_n(rollouts, n, rule, rng)
         values = [
-            winner.get("scores", {}).get(r, {}).get("value", 0)
+            normalize_score(r, winner.get("scores", {}).get(r, {}).get("value", 0))
             for r in non_gdm
         ]
         non_gdm_avgs.append(statistics.mean(values) if values else 0)
@@ -324,7 +334,7 @@ def save_grid_by_alpha(
                 winner = simulate_best_of_n(rollouts, n, rule, rng)
 
                 values = [
-                    winner.get("scores", {}).get(r, {}).get("value", 0)
+                    normalize_score(r, winner.get("scores", {}).get(r, {}).get("value", 0))
                     for r in non_gdm
                 ]
                 non_gdm_avgs.append(statistics.mean(values) if values else 0)
