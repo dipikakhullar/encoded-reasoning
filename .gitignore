@@ -60,7 +60,6 @@ rollouts_sample*/
 # Multi-agent: run outputs stay on disk, not in git
 **/runs/
 .pytest_cache/
-!experiments/manager_worker/data/
 
 # Claude Code worktrees
 .claude/worktrees/

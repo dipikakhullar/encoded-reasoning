@@ -13,7 +13,9 @@ judge: claude-opus-5
 
 models:
   gpt-5.5:
-    id: openai/gpt-5.5
+    id: gpt-5.5
+    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    api_key_env: [openai_api_key, OPENAI_API_KEY]
   claude-opus-5:
     id: anthropic/claude-opus-5
   kimi-k3:
@@ -24,10 +26,14 @@ models:
   deepseek-v4-flash:
     id: deepseek/deepseek-v4-flash
   gpt-5.4-mini:
-    id: openai/gpt-5.4-mini
+    id: gpt-5.4-mini
+    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    api_key_env: [openai_api_key, OPENAI_API_KEY]
     notes: cheap; used for the social_env passive audience and moderator
   gpt-5-mini:
-    id: openai/gpt-5-mini
+    id: gpt-5-mini
+    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    api_key_env: [openai_api_key, OPENAI_API_KEY]
   grok-4.7:
     id: spacexai/grok-4.7
     notes: verified two-hop tool calling 2026-09-22; ~1.5s/call

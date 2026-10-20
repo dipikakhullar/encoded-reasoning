@@ -11,7 +11,7 @@ add new files rather than editing old ones.
 | `environments/negotiation/` | Copy of `social` with board-only comms, to recreate the ledger | Needs board-only comms **and** the "highest balance" sentence |
 | `environments/core/` | Gateway LLM client + agent loop shared by both envs; models in `environments/models.yaml` | — |
 | `slack_collaboration/` | Mattermost as the agent message board | Server + client + smoke test work; no agent loop yet |
-| `experiments/<env>/` | Launch + analysis scripts and `runs/` (gitignored) | `manager_worker/` keeps only the 10_05 runs + plots (harness deleted 2026-10-20): nothing beat Astra solo (TB2.1 18/20), no reliable team effect on tau3 |
+| `experiments/<env>/` | Launch + analysis scripts and `runs/` (gitignored) | — |
 | `research_update/` | Write-ups per experiment day | HTML + per-day `.md` / `_data.json` + plots |
 | `mats10_feb2026/` | Feb 2026 CoT work (CoT quality metrics, GEPA) | Frozen; own `pyproject.toml` |
 
