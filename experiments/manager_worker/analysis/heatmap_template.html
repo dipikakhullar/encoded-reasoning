@@ -1,0 +1,372 @@
+<title>Manager × Worker Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one header band with the task-set controls, then three equal heatmap panels that wrap to one column on phones. */
+:root {
+  --bg: #f7f7f5;
+  --surface: #fcfcfb;
+  --line: #e2e1dc;
+  --fg: #0b0b0b;
+  --fg-2: #52514e;
+  --fg-3: #7a7974;
+  --accent: #2a78d6;
+  --na: #efeeea;
+  --na-stripe: #e2e1dc;
+  --ink-strong: #ffffff;
+  --ink-weak: #0b0b0b;
+  --pass-lo: #e6effb; --pass-hi: #0d366b;
+  --cost-lo: #fbe9e0; --cost-hi: #8a2c0b;
+  --wall-lo: #dcf2e8; --wall-hi: #0b5a3e;
+  --tip-bg: #0b0b0b; --tip-fg: #ffffff;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121211; --surface: #1a1a19; --line: #2f2f2c; --fg: #ffffff; --fg-2: #c3c2b7; --fg-3: #8f8e86;
+    --accent: #6da7ec; --na: #222220; --na-stripe: #2c2c29; --ink-strong: #0b0b0b; --ink-weak: #ffffff;
+    --pass-lo: #1d2633; --pass-hi: #86b6ef; --cost-lo: #2b201b; --cost-hi: #f29b6e;
+    --wall-lo: #172520; --wall-hi: #5fd2a8; --tip-bg: #f2f1ec; --tip-fg: #0b0b0b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121211; --surface: #1a1a19; --line: #2f2f2c; --fg: #ffffff; --fg-2: #c3c2b7; --fg-3: #8f8e86;
+  --accent: #6da7ec; --na: #222220; --na-stripe: #2c2c29; --ink-strong: #0b0b0b; --ink-weak: #ffffff;
+  --pass-lo: #1d2633; --pass-hi: #86b6ef; --cost-lo: #2b201b; --cost-hi: #f29b6e;
+  --wall-lo: #172520; --wall-hi: #5fd2a8; --tip-bg: #f2f1ec; --tip-fg: #0b0b0b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 48px; display: grid; gap: 24px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+h1 { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; text-wrap: balance; }
+.lede { margin: 0; color: var(--fg-2); max-width: 70ch; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--fg-2); padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.seg button:focus-visible, .check input:focus-visible, .cell:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: var(--fg-2); cursor: pointer; }
+.status { font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel h2 { margin: 0; font-size: 17px; font-weight: 700; }
+.panel .sub { margin: 0; font-size: 13px; color: var(--fg-3); }
+.gridwrap { overflow-x: auto; }
+.grid { display: grid; grid-template-columns: auto repeat(4, minmax(62px, 1fr)); gap: 2px; min-width: 330px; }
+.colhead, .rowhead { font-size: 12px; color: var(--fg-2); display: flex; align-items: center; }
+.colhead { justify-content: center; text-align: center; padding: 0 2px 4px; line-height: 1.2; min-height: 34px; }
+.rowhead { padding-right: 8px; line-height: 1.2; max-width: 92px; }
+.axis { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+.corner { display: flex; align-items: flex-end; padding-bottom: 4px; }
+.cell { aspect-ratio: 1 / 1; border-radius: 4px; display: grid; place-content: center; text-align: center; cursor: default;
+        font-variant-numeric: tabular-nums; position: relative; }
+.cell .v { font-family: var(--font-mono); font-size: 16px; font-weight: 500; }
+.cell .n { font-size: 11px; opacity: .8; }
+.cell.na { background: repeating-linear-gradient(135deg, var(--na), var(--na) 5px, var(--na-stripe) 5px, var(--na-stripe) 7px); color: var(--fg-3); }
+.legend { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+.legend .bar { height: 8px; border-radius: 4px; }
+.legend .dir { grid-column: 1 / -1; font-family: var(--font-body); font-size: 12px; }
+.notes { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
+.notes h2 { margin: 0 0 8px; font-size: 16px; }
+.notes ul, .topo ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--fg-2); max-width: 90ch; }
+.notes code { font-family: var(--font-mono); font-size: 13px; }
+figure.png { margin: 0; background: #ffffff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+figure.png img { width: 100%; height: auto; display: block; }
+figure.png figcaption { font-size: 13px; color: #52514e; }
+figure.png code { font-family: var(--font-mono); font-size: 12px; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+.tablewrap { overflow-x: auto; margin-top: 12px; }
+table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 640px; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--fg-3); font-weight: 600; }
+td.num, th.num { text-align: right; font-family: var(--font-mono); }
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--tip-bg); color: var(--tip-fg); border-radius: 6px; padding: 8px 10px;
+       font-size: 13px; line-height: 1.4; max-width: 280px; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+#tip b { font-weight: 700; }
+#tip .tasks { font-family: var(--font-mono); font-size: 11px; margin-top: 4px; opacity: .85; }
+.topo { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 20px; }
+.topo h2 { margin: 0; font-size: 21px; line-height: 1.2; text-wrap: balance; }
+.topo p { margin: 0; color: var(--fg-2); max-width: 75ch; }
+.topo .meta { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.pill { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border-radius: 999px;
+        padding: 2px 10px; border: 1px solid var(--line); color: var(--fg-2); background: var(--surface); }
+.pill.live { border-color: var(--accent); color: var(--accent); }
+.topo svg { width: 132px; height: 52px; flex: none; }
+.topo svg circle { fill: var(--surface); stroke: var(--fg-2); stroke-width: 1.5; }
+.topo svg line { stroke: var(--fg-3); stroke-width: 1.5; }
+.topo svg line.peer { stroke: var(--accent); stroke-dasharray: 4 3; }
+.topo svg text { fill: var(--fg-2); font-family: var(--font-mono); font-size: 9px; }
+.topo-head { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.placeholder { margin: 0; border: 1.5px dashed var(--line); border-radius: 10px; background: var(--surface);
+               min-height: 220px; display: grid; place-content: center; gap: 6px; padding: 24px 16px; text-align: center; }
+.placeholder .ph-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+.placeholder .ph-title { font-size: 17px; font-weight: 700; color: var(--fg); }
+.placeholder .ph-note { font-size: 14px; color: var(--fg-2); max-width: 60ch; }
+.bench { margin: 0; font-size: 17px; font-weight: 700; }
+@media (max-width: 480px) { h1 { font-size: 23px; } .wrap { padding-inline: 16px; } }
+@media (prefers-reduced-motion: no-preference) { .cell { transition: background-color .2s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Terminal-Bench 2.1 · tau3-bench · 1 trial per task</div>
+    <h1>Manager × worker teams</h1>
+    <p class="lede">Each cell is one setup: a manager model (rows) running a team of worker models (columns). The top row has no manager: the column's model works alone. The page has two grids, one per communication setup. Hover a cell for counts and per-task results.</p>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Task set">
+        <button type="button" id="set-all" data-set="all" aria-pressed="true">All 20 tasks</button>
+        <button type="button" id="set-orig" data-set="orig" aria-pressed="false">Original 10</button>
+        <button type="button" id="set-new" data-set="new" aria-pressed="false">New 10</button>
+      </div>
+      <label class="check"><input type="checkbox" id="matched" checked> Only tasks every cell has finished</label>
+      <span class="status" id="status"></span>
+    </div>
+  </header>
+
+  <section class="topo" id="star">
+    <div class="topo-head">
+      <svg viewBox="0 0 132 52" role="img" aria-label="Star: each worker talks only to the manager">
+        <line x1="66" y1="12" x2="22" y2="40"/><line x1="66" y1="12" x2="110" y2="40"/>
+        <circle cx="66" cy="12" r="8"/><circle cx="22" cy="40" r="8"/><circle cx="110" cy="40" r="8"/>
+        <text x="80" y="15">mgr</text><text x="34" y="48">w1</text><text x="88" y="48">w2</text>
+      </svg>
+      <div><h2>Star: workers talk only to the manager</h2>
+        <div class="meta"><span class="pill">6 Oct 2026</span><span class="pill">complete</span><span class="status" id="status-star"></span></div></div>
+    </div>
+    <p>Workers could post only to the manager and saw only messages addressed to them. They could not message each other.</p>
+  </section>
+  <h3 class="bench">Terminal-Bench 2.1 · 20 tasks</h3>
+  <section class="panels" id="panels-star"></section>
+  <figure class="png">
+    <img src="heatmap.png" alt="Matplotlib version of the three Terminal-Bench 2.1 heatmaps where workers can message only the manager, not each other: pass@1, dollars per task and wall-clock minutes, by manager and worker model." width="2550" height="690">
+    <figcaption>Terminal-Bench 2.1, workers can message only the manager, not each other. Static matplotlib version of the star grid above (tasks every cell has finished), from <code>analysis/plot_heatmap.py</code>.</figcaption>
+  </figure>
+
+  <section class="topo" id="w2w">
+    <div class="topo-head">
+      <svg viewBox="0 0 132 52" role="img" aria-label="Workers message each other directly as well as the manager">
+        <line x1="66" y1="12" x2="22" y2="40"/><line x1="66" y1="12" x2="110" y2="40"/><line class="peer" x1="30" y1="40" x2="102" y2="40"/>
+        <circle cx="66" cy="12" r="8"/><circle cx="22" cy="40" r="8"/><circle cx="110" cy="40" r="8"/>
+        <text x="80" y="15">mgr</text><text x="34" y="48">w1</text><text x="88" y="48">w2</text>
+      </svg>
+      <div><h2>Not star: workers can message each other</h2>
+        <div class="meta"><span class="pill">7 Oct 2026</span><span class="pill __W2W_PILL__">__W2W_PROGRESS__</span><span class="status" id="status-w2w"></span></div></div>
+    </div>
+    <p>Same 20 tasks and the same six team setups, with one change: workers can send each other direct messages, which the manager does not see (<code>w2w_private</code>). The fix for the review deadlock found on 7 Oct is in. The solo row repeats the 6 Oct solo runs, which have no teammates.</p>
+    <ul>
+      <li><b>Weak workers gained the most from messaging each other.</b> Compared with star, Qwen 3.8 27B teams rose from 10 to 14 of 20 under GPT-6 Astra and from 9 to 12 under DeepSeek V4 Pro, and GPT-6 Astra + GLM-5.3 rose from 13 to 15. Every Qwen team now beats Qwen alone (10 of 20).</li>
+      <li><b>No team beat GPT-6 Astra alone</b> (18 of 20, $0.43, 3.5 min). The best teams reached 15 of 20. DeepSeek V4 Pro + GLM-5.3 fell from 18 to 15, losing <code>db-wal-recovery</code>, <code>polyglot-rust-c</code> and <code>sqlite-with-gcov</code>. With one trial per task, changes of 1–3 tasks may be noise.</li>
+      <li><b>Every team cost more than its star version</b>: $0.47–0.90 per task here vs $0.19–0.76 under star, $74.85 for all 120 trials. Workers messaged each other in 7–12 of the 20 trials per cell. Teams under GPT-6 Astra sent more of these messages (30–45 per cell) than teams under DeepSeek V4 Pro (11–18). Star wall-clock times include the review deadlock, so wall-clock is not comparable across the two grids.</li>
+    </ul>
+  </section>
+  <h3 class="bench">Terminal-Bench 2.1 · 20 tasks</h3>
+  <section class="panels" id="panels-w2w"></section>
+  <figure class="png">
+    <img src="heatmap_w2w.png" alt="Matplotlib version of the workers-can-message grid: pass@1, dollars per task and wall-clock minutes, by manager and worker model." width="2550" height="690">
+    <figcaption>Static matplotlib version of the grid above, from <code>analysis/plot_heatmap.py --w2w</code>.</figcaption>
+  </figure>
+
+  <section class="topo" id="tau3">
+    <div class="topo-head"><div><h2>tau3-bench: solo screen for hard tasks</h2>
+      <div class="meta"><span class="pill">7 Oct 2026</span><span class="pill">screen complete</span><span class="pill">teams not started</span></div></div></div>
+    <p>Customer-service tasks: the agent serves a simulated customer (gpt-5.2) through the task's tools, and the grader gives 0 or 1. To find tasks worth giving to teams, three models first ran alone on 100 tasks (35 airline, 35 banking_knowledge, 30 telecom), one trial each, with no errors.</p>
+    <ul>
+      <li><b>GLM-5.3 did best alone (71 of 100)</b>, ahead of Qwen 3.8 27B (69) and DeepSeek V4 Pro (64). DeepSeek also cost the most.</li>
+      <li><b>Banking_knowledge is the hard domain.</b> Every model passed 7–11 of 35 there, versus 28–31 of 35 on airline and 28–29 of 30 on telecom.</li>
+      <li><b>22 tasks failed for all three models</b>: 3 airline and 19 banking_knowledge. They are the candidate hard set. The team grid below runs on all 22, with GPT-6 Astra alone as the strong solo baseline.</li>
+    </ul>
+  </section>
+  <div class="tablewrap"><table aria-label="tau3-bench solo screen">
+    <thead><tr><th>Model, alone</th><th class="num">Pass / 100</th><th class="num">Airline / 35</th><th class="num">Banking / 35</th><th class="num">Telecom / 30</th><th class="num">$ / task</th><th class="num">Minutes / task</th></tr></thead>
+    <tbody>
+      <tr><td>GLM-5.3</td><td class="num">71</td><td class="num">31</td><td class="num">11</td><td class="num">29</td><td class="num">0.13</td><td class="num">2.8</td></tr>
+      <tr><td>Qwen 3.8 27B</td><td class="num">69</td><td class="num">30</td><td class="num">11</td><td class="num">28</td><td class="num">0.11</td><td class="num">3.5</td></tr>
+      <tr><td>DeepSeek V4 Pro</td><td class="num">64</td><td class="num">28</td><td class="num">7</td><td class="num">29</td><td class="num">0.19</td><td class="num">3.4</td></tr>
+      <tr><td>All three fail</td><td class="num">22</td><td class="num">3</td><td class="num">19</td><td class="num">0</td><td></td><td></td></tr>
+    </tbody></table></div>
+  <details>
+    <summary>The 22 tasks all three models failed</summary>
+    <p><b>Airline:</b> <code>7, 29, 44</code><br><b>Banking_knowledge:</b> <code>003, 005, 018, 020, 028, 041, 053, 054, 067, 070, 071, 074, 075, 081, 085, 086, 087, 088, 092</code></p>
+    <p>$ / task is the agent's model spend only; the simulated customer adds about $0.01 per trial. Before the screen, a 2-task test (airline-7, one banking task) gave 1 of 2 for each team (GPT-6 Astra or DeepSeek V4 Pro managing GLM-5.3 workers who can message each other), the same as GLM-5.3, Qwen 3.8 27B and GPT-6 Astra alone.</p>
+  </details>
+
+  <section class="topo" id="tau-teams">
+    <div class="topo-head">
+      <svg viewBox="0 0 132 52" role="img" aria-label="Workers message each other directly as well as the manager">
+        <line x1="66" y1="12" x2="22" y2="40"/><line x1="66" y1="12" x2="110" y2="40"/><line class="peer" x1="30" y1="40" x2="102" y2="40"/>
+        <circle cx="66" cy="12" r="8"/><circle cx="22" cy="40" r="8"/><circle cx="110" cy="40" r="8"/>
+        <text x="80" y="15">mgr</text><text x="34" y="48">w1</text><text x="88" y="48">w2</text>
+      </svg>
+      <div><h2>tau3-bench teams on the 22 hard tasks: workers can message each other</h2>
+        <div class="meta"><span class="pill">7 Oct 2026</span><span class="pill __TAU_PILL__">__TAU_PROGRESS__</span><span class="status" id="status-tau"></span></div></div>
+    </div>
+    <p>The same six team setups as the Terminal-Bench grids, with workers able to message each other (<code>w2w_private</code>), on the 22 tasks that GLM-5.3, DeepSeek V4 Pro and Qwen 3.8 27B all failed alone. Only the manager talks to the customer; workers have the tools that look up and change records. Each team gets the task's full 60 minutes and at most $5 per trial. The solo row for GLM-5.3, DeepSeek V4 Pro and Qwen 3.8 27B is the screen above, so it is 0 by construction; GPT-6 Astra alone runs on the same 22 tasks (started 7 Oct 19:12 UTC, same 60-minute and $5 limits). All 132 team trials and 22 GPT-6 Astra solo trials finished with no errors and no timeouts.</p>
+    <ul>
+      <li><b>No team beat GPT-6 Astra alone on the 22 tasks.</b> GPT-6 Astra alone passed 5 of 22 ($2.11 per task). Teams it managed passed 4–5 of 22 ($1.12–1.39), and teams DeepSeek V4 Pro managed passed 1–2 ($0.76–0.87).</li>
+      <li><b>On the 17 tasks every model failed alone, repeat solo trials explain most team passes.</b> Teams passed 7 of 102 trials there (5 tasks). Two more solo trials per model then passed 7 of 136: GPT-6 Astra 3 of 51 (banking 003 once, 028 twice), GLM-5.3 2 of 51 (041, 071), DeepSeek V4 Pro and Qwen 3.8 27B 1 of 51 each (071). Only banking 005 and 054 stayed team-only, one team pass each. The best team, GPT-6 Astra + Qwen 3.8 27B (3 of 17, 18%), is not reliably above GPT-6 Astra alone (3 of 51, 6%; one-sided Fisher p = 0.16); GPT-6 Astra-managed teams together are 6 of 51 (p = 0.24).</li>
+      <li><b>Teams covered every task GPT-6 Astra solved alone on its first try.</b> Each of the 5 tasks GPT-6 Astra passed alone (airline-29, banking 018, 070, 075, 081) was also passed by at least one team. Across all six teams 10 of the 22 tasks were solved at least once, but that pools six chances per task against one per solo model.</li>
+      <li><b>Cost:</b> $135.12 for the 132 team trials, $46.40 for GPT-6 Astra alone on the 22 tasks, and $115.24 for the 136 repeat solo trials on the 17 tasks ($72.20 of it GPT-6 Astra).</li>
+    </ul>
+  </section>
+  <section class="panels" id="panels-tau"></section>
+  <figure class="png">
+    <img src="heatmap_tau.png" alt="Matplotlib version of the tau3-bench hard-task grid where workers can message each other: pass@1, dollars per task and wall-clock minutes, by manager and worker model." width="2550" height="690">
+    <figcaption>tau3-bench, 22 hard tasks, workers can message each other. Static matplotlib version of the grid above, from <code>analysis/plot_heatmap.py --tau --all</code>.</figcaption>
+  </figure>
+  <figure class="png">
+    <img src="heatmap_tau_allfail.png" alt="The same tau3-bench heatmaps restricted to the tasks every model failed when working alone, GPT-6 Astra included: pass@1, dollars per task and wall-clock minutes, by manager and worker model." width="2550" height="690">
+    <figcaption>The same grid, only on the 17 tau3-bench tasks that every model failed on its first solo trial, GPT-6 Astra included. Team cells are one trial per task (17 trials); solo cells add two repeat trials per task (51 trials), so a solo pass here is a second- or third-try pass. From <code>analysis/plot_heatmap.py --tau --all --allfail</code>.</figcaption>
+  </figure>
+
+
+  <details>
+    <summary>Table view</summary>
+    <div class="tablewrap"><table id="table-star" aria-label="Star"></table></div>
+    <div class="tablewrap"><table id="table-w2w" aria-label="Workers can message each other"></table></div>
+    <div class="tablewrap"><table id="table-tau" aria-label="tau3-bench hard tasks, workers can message each other"></table></div>
+  </details>
+
+  <section class="notes">
+    <h2>How to read this</h2>
+    <ul>
+      <li><b>Pass@1</b> is the share of tasks passed with a single trial. <b>$ / task</b> is mean model spend per trial (manager plus all workers). <b>Wall-clock</b> is mean agent run time in minutes, excluding container setup and grading.</li>
+      <li>Every cell is one trial per task, so a difference of one or two tasks is within noise.</li>
+      <li>The GPT-6 Astra manager row mixes two prompts: the original 10 tasks ran before the "only give feedback, not the solution" rule was added; the new 10 ran with it. The DeepSeek V4 Pro manager ran every task with the rule, but often ignored it and dictated exact fixes.</li>
+      <li>Teams let the manager choose 1 to 4 workers. The manager cannot run commands itself.</li>
+      <li><code>path-tracing</code> leaves its original renderer binary in the task container; every setup that passed it disassembled that binary.</li>
+            <li>Star data: <code>10_05/runs/*_tb21_2026-10-06__{20-04-01,20-25-46,22-45-33}</code>, __NTRIALS__ trials. Workers-can-message data: <code>10_05/runs/*_w2w_private-*_tb21_2026-10-07__05-45-35</code>, __NW2W__ team trials finished. tau3-bench screen: <code>10_05/runs/solo-{glm,qwen27,ds4}_tau3_2026-10-07__06-20-57</code>, 300 trials. Updated __UPDATED__.</li>
+    </ul>
+  </section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const TRIALS = __DATA__;
+const W2W_TEAMS = __DATA_W2W__;
+const TAU = __DATA_TAU__;
+const DATASETS = { star: TRIALS, w2w: TRIALS.filter(t => t.m === "none").concat(W2W_TEAMS), tau: TAU };
+const MANAGERS = [["none", "No manager (solo)"], ["astra", "GPT-6 Astra"], ["ds4", "DeepSeek V4 Pro"]];
+const WORKERS = [["astra", "GPT-6 Astra"], ["ds4", "DeepSeek V4 Pro"], ["glm", "GLM-5.3"], ["qwen", "Qwen 3.8 27B"]];  // same order as the manager rows
+const VALID = (m, w) => m === "none" || w !== "astra";
+const METRICS = [
+  { key: "pass", title: "Pass@1", sub: "Share of tasks passed. Higher is better.", ramp: "pass",
+    fmt: s => Math.round(s.pass * 100) + "%", domain: () => [0, 1], val: s => s.pass, dir: "darker = more tasks passed" },
+  { key: "cost", title: "$ per task", sub: "Mean model spend per trial. Lower is better.", ramp: "cost",
+    fmt: s => "$" + s.cost.toFixed(2), domain: max => [0, max], val: s => s.cost, dir: "darker = more expensive" },
+  { key: "wall", title: "Wall-clock", sub: "Mean agent run time, minutes. Lower is faster.", ramp: "wall",
+    fmt: s => s.wall.toFixed(1) + "m", domain: max => [0, max], val: s => s.wall, dir: "darker = slower" },
+];
+let state = { set: "all", matched: true };
+try { const saved = JSON.parse(localStorage.getItem("mxw-state") || "null"); if (saved) state = { ...state, ...saved }; } catch (e) {}
+
+const cells = [];
+for (const [m] of MANAGERS) for (const [w] of WORKERS) if (VALID(m, w)) cells.push(m + "|" + w);
+
+function selected(trials, key) {
+  // The task-set buttons pick Terminal-Bench subsets; the tau3 grid always shows its 22 tasks.
+  let rows = trials.filter(t => t.reward !== null && (key === "tau" || state.set === "all" || t.set === state.set));
+  if (state.matched) {
+    const byTask = {};
+    for (const t of rows) (byTask[t.task] ||= new Set()).add(t.m + "|" + t.w);
+    const present = cells.filter(c => trials.some(t => t.m + "|" + t.w === c));  // cells never run don't drop tasks
+    const keep = new Set(Object.keys(byTask).filter(k => present.every(c => byTask[k].has(c))));
+    rows = rows.filter(t => keep.has(t.task));
+  }
+  return rows;
+}
+function stats(rows) {
+  const out = {};
+  for (const c of cells) {
+    const r = rows.filter(t => t.m + "|" + t.w === c);
+    if (!r.length) { out[c] = null; continue; }
+    const walls = r.filter(t => t.wall !== null);
+    out[c] = { n: r.length, passed: r.filter(t => t.reward === 1).length, pass: r.filter(t => t.reward === 1).length / r.length,
+               cost: r.reduce((a, t) => a + t.cost, 0) / r.length, total: r.reduce((a, t) => a + t.cost, 0),
+               wall: walls.reduce((a, t) => a + t.wall, 0) / Math.max(walls.length, 1),
+               tasks: r.slice().sort((a, b) => a.task.localeCompare(b.task)) };
+  }
+  return out;
+}
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+window._S = {};
+function render() {
+  for (const b of document.querySelectorAll(".seg button")) b.setAttribute("aria-pressed", String(b.dataset.set === state.set));
+  document.getElementById("matched").checked = state.matched;
+  for (const key of Object.keys(DATASETS)) renderGrid(key);
+}
+function renderGrid(key) {
+  const rows = selected(DATASETS[key], key), S = stats(rows);
+  const nTasks = new Set(rows.map(t => t.task)).size;
+  document.getElementById("status-" + key).textContent = nTasks + " tasks · " + rows.length + " trials";
+  const panels = document.getElementById("panels-" + key);
+  panels.innerHTML = "";
+  for (const M of METRICS) {
+    const vals = cells.map(c => S[c] && M.val(S[c])).filter(v => v != null);
+    const [lo, hi] = M.domain(Math.max(...vals, 0.0001));
+    let html = `<article class="panel"><div><h2>${M.title}</h2><p class="sub">${M.sub}</p></div><div class="gridwrap"><div class="grid" role="table" aria-label="${M.title} by manager and worker">`;
+    html += `<div class="corner"><span class="axis">Manager ↓ · Worker →</span></div>`;
+    for (const [, wl] of WORKERS) html += `<div class="colhead" role="columnheader">${wl}</div>`;
+    for (const [m, ml] of MANAGERS) {
+      html += `<div class="rowhead" role="rowheader">${ml}</div>`;
+      for (const [w, wl] of WORKERS) {
+        const s = S[m + "|" + w];
+        if (!VALID(m, w)) { html += `<div class="cell na" role="cell" aria-label="${ml} with ${wl}: not run"><span class="v">—</span></div>`; continue; }
+        if (!s) { html += `<div class="cell na" role="cell" aria-label="${ml} with ${wl}: no finished trials"><span class="n">no data</span></div>`; continue; }
+        const t = hi > lo ? Math.min(1, Math.max(0, (M.val(s) - lo) / (hi - lo))) : 0;
+        const pct = Math.round(8 + t * 92);
+        const ink = t > 0.55 ? "var(--ink-strong)" : "var(--ink-weak)";
+        html += `<div class="cell" tabindex="0" role="cell" data-grid="${key}" data-cell="${m}|${w}" data-metric="${M.key}"
+          style="background: color-mix(in oklab, var(--${M.ramp}-hi) ${pct}%, var(--${M.ramp}-lo)); color: ${ink}"
+          aria-label="${ml} with ${wl}: ${M.fmt(s)}, ${s.passed} of ${s.n} passed">
+          <span class="v">${M.fmt(s)}</span><span class="n">${M.key === "pass" ? s.passed + "/" + s.n : "n=" + s.n}</span></div>`;
+      }
+    }
+    const loLbl = M.key === "pass" ? "0%" : M.key === "cost" ? "$0" : "0m";
+    const hiLbl = M.key === "pass" ? "100%" : M.key === "cost" ? "$" + hi.toFixed(2) : hi.toFixed(1) + "m";
+    html += `</div></div><div class="legend"><span>${loLbl}</span><div class="bar" style="background: linear-gradient(90deg, color-mix(in oklab, var(--${M.ramp}-hi) 8%, var(--${M.ramp}-lo)), var(--${M.ramp}-hi))"></div><span>${hiLbl}</span><span class="dir">${M.dir}</span></div></article>`;
+    panels.insertAdjacentHTML("beforeend", html);
+  }
+  let tbl = `<thead><tr><th>Manager</th><th>Worker</th><th class="num">Passed</th><th class="num">Pass@1</th><th class="num">$ / task</th><th class="num">Total $</th><th class="num">Wall-clock (min)</th></tr></thead><tbody>`;
+  for (const [m, ml] of MANAGERS) for (const [w, wl] of WORKERS) {
+    if (!VALID(m, w)) continue;
+    const s = S[m + "|" + w];
+    tbl += s ? `<tr><td>${ml}</td><td>${wl}</td><td class="num">${s.passed}/${s.n}</td><td class="num">${Math.round(s.pass * 100)}%</td><td class="num">$${s.cost.toFixed(2)}</td><td class="num">$${s.total.toFixed(2)}</td><td class="num">${s.wall.toFixed(1)}</td></tr>`
+             : `<tr><td>${ml}</td><td>${wl}</td><td colspan="5">no finished trials</td></tr>`;
+  }
+  document.getElementById("table-" + key).innerHTML = tbl + "</tbody>";
+  window._S[key] = S;
+}
+
+const tip = document.getElementById("tip");
+function showTip(el) {
+  const s = (window._S[el.dataset.grid] || {})[el.dataset.cell]; if (!s) return;
+  const [m, w] = el.dataset.cell.split("|");
+  const ml = MANAGERS.find(x => x[0] === m)[1], wl = WORKERS.find(x => x[0] === w)[1];
+  const g = el.dataset.grid;
+  const topo = g === "tau" ? (m === "none" ? " (7 Oct solo screen)" : " · workers can message each other")
+             : g === "w2w" ? (m === "none" ? " (6 Oct solo run)" : " · workers can message each other") : (m === "none" ? "" : " · star");
+  const who = (m === "none" ? `${wl} alone` : `${ml} manager, ${wl} workers`) + topo;
+  const list = s.tasks.map(t => (t.reward === 1 ? "✓ " : "✗ ") + esc(t.task)).join("<br>");
+  tip.innerHTML = `<b>${esc(who)}</b><br>${s.passed}/${s.n} passed · $${s.cost.toFixed(2)}/task ($${s.total.toFixed(2)} total) · ${s.wall.toFixed(1)} min avg<div class="tasks">${list}</div>`;
+  tip.hidden = false;
+  const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = r.left + r.width / 2 - tw / 2, y = r.bottom + 8;
+  x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+  if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+document.addEventListener("mouseover", e => { const c = e.target.closest(".cell[data-cell]"); if (c) showTip(c); else tip.hidden = true; });
+document.addEventListener("focusin", e => { const c = e.target.closest(".cell[data-cell]"); if (c) showTip(c); else tip.hidden = true; });
+document.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+function save() { try { localStorage.setItem("mxw-state", JSON.stringify(state)); } catch (e) {} }
+for (const b of document.querySelectorAll(".seg button")) b.addEventListener("click", () => { state.set = b.dataset.set; save(); render(); });
+document.getElementById("matched").addEventListener("change", e => { state.matched = e.target.checked; save(); render(); });
+render();
+</script>

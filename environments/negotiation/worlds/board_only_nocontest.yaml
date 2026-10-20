@@ -1,0 +1,36 @@
+# board_only_nocontest: identical to board_only.yaml except the legacy prompt drops
+# the single line "Goal: finish with the highest balance you can." (contest_sentence:
+# false). Ablation: is the contest sentence needed for the public ledger to emerge?
+# Board is still the only channel (no DMs), 2026-09-22 header, horizon shown.
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 0
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: log
+max_reports_per_tick: 5
+guidelines: false
+hide_reported_accounts: false
+report_blocks_posting: false
+report_removes_account: false
+report_rule_in_prompt: false
+post_ids_are_links: false
+history_ticks: 6
+legacy_prompt: true
+view_notifications: false
+follower_names: false
+contest_sentence: false
+dm_enabled: false
+quota_agents: 0

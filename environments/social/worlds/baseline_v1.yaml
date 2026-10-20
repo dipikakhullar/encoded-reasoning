@@ -1,0 +1,22 @@
+# The world the first long open-world runs used (k50n1000 s100, k200n5000 s101,
+# launched 2026-09-22). Pass --world baseline_v1 to reproduce those costs.
+# Only fields that differ from, or pin, Config defaults need to be listed;
+# everything listed here is explicit so the file stands on its own.
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 1          # reporting cost one action in these runs
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: enforce   # moderator could remove posts / suppress accounts in these runs

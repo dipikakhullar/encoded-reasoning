@@ -34,10 +34,10 @@ build/
 gepa/
 
 # Large generated outputs (eval results with full transcripts)
-week_1/arithmetic_problems_*/
-week_1/arithmetic_problems_bon/
-week_1/eval_results_alpha_*.json
-week_1/rollouts/
+mats10_feb2026/week_1/arithmetic_problems_*/
+mats10_feb2026/week_1/arithmetic_problems_bon/
+mats10_feb2026/week_1/eval_results_alpha_*.json
+mats10_feb2026/week_1/rollouts/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -56,3 +56,11 @@ rollouts_sample*/
 *.zip
 
 *uv.lock
+
+# Multi-agent: run outputs stay on disk, not in git
+**/runs/
+.pytest_cache/
+!experiments/manager_worker/data/
+
+# Claude Code worktrees
+.claude/worktrees/

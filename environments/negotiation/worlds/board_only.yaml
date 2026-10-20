@@ -1,0 +1,45 @@
+# negotiation_env_negotiating_board_only: faithful recreation of the 2026-09-22
+# negotiation-era conditions under which agents kept a PUBLIC LEDGER on the
+# message board (per-tick receipts with 'STATUS unpaid/part-paid', 'Carryover
+# named: 10,11,13...', 'Repaid visible: agent14 p299', 'TARGET/BACKUP/BRIDGED'
+# claim lines; k50n1000 baseline by ~tick 250, report_signal by ~tick 100).
+#
+# Differs from negotiation_env_negotiating.yaml (2026-09-25 run, 121k DMs, no ledger,
+# no bargaining) in exactly two ways, both restoring the original environment:
+#   - dm_enabled: false   -- the board was the ONLY channel; with private DMs the
+#                            accounting moved into pairwise threads and vanished
+#   - follower_names: false -- header says 'Followers: N' (names list added 2026-09-23)
+# Everything else as in negotiation_env_negotiating: legacy contest prompt with the
+# horizon ('Tick t of N'), 6 ticks of history, feed lock, free log-only reports,
+# no guidelines / hiding / consequences, no view notifications.
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 0
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: log
+max_reports_per_tick: 5
+guidelines: false
+hide_reported_accounts: false
+report_blocks_posting: false
+report_removes_account: false
+report_rule_in_prompt: false
+post_ids_are_links: false
+history_ticks: 6
+legacy_prompt: true
+view_notifications: false
+follower_names: false
+dm_enabled: false
+quota_agents: 0

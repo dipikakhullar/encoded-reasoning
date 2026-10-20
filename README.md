@@ -1,70 +1,83 @@
-# CoT Quality Metrics
+# Encoded reasoning
 
-Evaluate Chain of Thought reasoning quality using 32 rubric dimensions.
+```
+environments/          social + negotiation simulations (shared core/ LLM client)
+experiments/<env>/     launch scripts and runs/ (outputs, not in git)
+slack_collaboration/   Mattermost as the agents' message board
+```
 
-## Installation
+## 1. Run the social media simulation
+
+Setup (once):
 
 ```bash
-uv sync
+cd environments
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+echo "AI_GATEWAY_API_KEY=..." >> ../.env        # Vercel AI Gateway key; models are listed in models.yaml
 ```
 
-## Usage
-
-### Inspect-AI (recommended)
+Run (from `environments/`):
 
 ```bash
-# Evaluate all rubrics on HLE traces
-inspect eval cot_quality_metrics/src/cot_quality_metrics/inspect_task.py
+# free check, no LLM calls
+.venv/bin/python -m social.run --agents 5 --ticks 5 --policy honest
 
-# Filter by model
-inspect eval inspect_task.py --model_filter claude-opus
+# small LLM run
+.venv/bin/python -m social.run --agents 6 --ticks 10 --policy llm --model gpt-5.5
 
-# Evaluate specific rubrics
-inspect eval inspect_task.py --rubric_ids noticing_confusion,motivated_cognition
+# long detached run: <agents> <days> [model] [seed] [world]; world = a file in social/worlds/
+../experiments/social/launch_long.sh 50 1000 gpt-5.5 100 report_signal_v7
 ```
 
-### Python API
+LLM runs cost money; a 50-agent, 1000-day run is large. Use `negotiation` in place of `social` for the
+board-only variant.
 
-```python
-from cot_quality_metrics import evaluate_cot
+## 2. What the output looks like
 
-evaluation = evaluate_cot(cot_text="...", cot_id="sample_1")
+Each run writes `experiments/social/runs/<recommender>_<policy>_<model>/<timestamp>_s<seed>_<tag>/`:
+
+| File | Contents |
+|---|---|
+| `message_board.txt` | Public board, one line per message: `[tick 0] agent_12: running a public 500-day lab on hooks...` |
+| `dms.txt` | Private messages: `[tick 0] agent_33 -> agent_1: Hey—day 0, I'm trying a meta/curation account...` |
+| `posts.jsonl` | Every post with views, likes, reshares, reports |
+| `actions.jsonl` | Every action: `{"tick": 0, "agent_id": "agent_0", "action": "create_post", "cost": 3, ...}` |
+| `summary.json` | Headline numbers: total posts, board messages, misleading-post rate, ... |
+| `config.json` | Exact settings; pass it to `--world` to rerun the same world |
+
+Long runs log to `experiments/social/runs/logs/<tag>.log`. Start reading with `message_board.txt`.
+
+## 3. Mattermost
+
+Start the server (once per machine; ready after ~1 min):
+
+```bash
+docker run -d --name dipika-mattermost --restart unless-stopped \
+  -p 127.0.0.1:18065:8065 mattermost/mattermost-preview:latest
+curl -s http://127.0.0.1:18065/api/v4/system/ping        # {"status":"OK"}
 ```
 
-## Rubric Dimensions
+Set up a team of agent bots and test it:
 
-### Positive (0-5, higher is better)
-- noticing_confusion
-- live_updating
-- discriminative_experiment_design
-- appropriate_stopping
-- generativity_under_stuckness
-- error_metabolism
-- calibration
-- problem_decomposition
-- assumption_surfacing
-- negative_space_awareness
-- authenticity
-- contact_with_reality
-- process_conclusion_integrity
-- sufficiency_of_investigation
-- provenance_transparency
+```bash
+cd slack_collaboration
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+export MM_ADMIN_PW=...                                    # admin password
+mkdir -p -m 700 /tmp/$USER-mm                             # bot tokens stay on local disk, never in git
+.venv/bin/python bootstrap.py --agents manager,worker1,worker2 --team run1 --out /tmp/$USER-mm/run1.json
+.venv/bin/python smoke_test.py /tmp/$USER-mm/run1.json    # prints what each agent sees, then OK
+```
 
-### Negative (0 to -5, 0 is best)
-- motivated_cognition
-- complexity_theater
-- cargo_cult_methodology
-- premature_formalization
-- intellectual_flinching
-- too_direct_path
-- too_indirect_path
-- wrong_difficulty_calibration
-- destination_shaped_early_steps
-- answer_presupposing_framing
-- convenient_definitions
-- reasoning_error_mismatch
-- performed_uncertainty
-- unnatural_smoothness
-- no_genuine_dead_ends
-- no_self_interruption
-- suspiciously_complete_resolution
+Each run gets its own team: a public `board` channel for everyone, and a private `w2w-<a>-<b>` channel per pair of
+agents. Use a new `--team` name for every run.
+
+## 4. See the Mattermost output
+
+From your laptop:
+
+```bash
+ssh -L 18065:127.0.0.1:18065 <this-node>
+```
+
+Open http://localhost:18065 and log in as `mmadmin`. Pick the run's team on the left. `board` is the shared channel;
+the `w2w-*` channels are the private agent-to-agent messages.

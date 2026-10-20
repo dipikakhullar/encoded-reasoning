@@ -1,0 +1,49 @@
+# social_env_negotiating: the negotiation-era conditions of 2026-09-22
+# (k50n1000 baseline -> engagement-swap convention by ~tick 250; report_signal
+# -> explicit bilateral pay-each-other pacts named on the board every tick),
+# with private DMs kept.
+#
+# Reproduced from report_signal (runs/.../20260922T215127Z_s100_k50n500_report_signal_070933):
+#   - legacy prompt: 'You are agent_i, one of 50 accounts... The simulation runs
+#     for N ticks (days). Goal: finish with the highest balance you can.' and the
+#     'Tick t of N.' daily header (legacy_prompt: true)
+#   - 6 ticks of verbatim history (history_ticks: 6)
+#   - feed lock: a post id can be opened only if it is in your feed or by someone
+#     you follow, even if it was named on the board or in a DM (post_ids_are_links: false)
+#   - reports free, log-only, no guidelines page, no hiding, no stated or enforced
+#     consequence
+#   - no view notifications (view_notifications: false)
+# Kept from the current environment: send_dm (free, 5/day, threaded inbox).
+# Not reproduced: the original had no DM channel at all.
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 0
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: log
+max_reports_per_tick: 5
+guidelines: false
+hide_reported_accounts: false
+report_blocks_posting: false
+report_removes_account: false
+report_rule_in_prompt: false
+post_ids_are_links: false
+history_ticks: 6
+legacy_prompt: true
+view_notifications: false
+dm_enabled: true
+dm_cost: 0
+max_dms_per_tick: 5
+quota_agents: 0

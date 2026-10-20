@@ -1,0 +1,22 @@
+# baseline_v1 costs and rewards, but reports are pure signal: recorded in
+# reports.jsonl with the reporter's justification, never acted on, never
+# surfaced to any agent. Agents can report a post or an account for free.
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 0
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: log
+max_reports_per_tick: 5

@@ -1,0 +1,47 @@
+# Model roster. Every entry is reached through one OpenAI-compatible endpoint
+# (Vercel AI Gateway by default) so the harness has exactly one client path.
+#
+# Run partitioning uses the slug:  runs/<task>/<slug>/<run_id>/
+
+gateway:
+  base_url: https://ai-gateway.vercel.sh/v1
+  api_key_env: [vercel_api_key, AI_GATEWAY_API_KEY, VERCEL_API_KEY]
+
+# Model used to grade board claims / audit answers. Keep it different from
+# the subject model where possible; override with --judge.
+judge: claude-opus-5
+
+models:
+  gpt-5.5:
+    id: openai/gpt-5.5
+  claude-opus-5:
+    id: anthropic/claude-opus-5
+  kimi-k3:
+    id: moonshotai/kimi-k3
+  deepseek-v4-pro:
+    id: deepseek/deepseek-v4-pro
+    notes: ~25s per call through the gateway; budget accordingly
+  deepseek-v4-flash:
+    id: deepseek/deepseek-v4-flash
+  gpt-5.4-mini:
+    id: openai/gpt-5.4-mini
+    notes: cheap; used for the social_env passive audience and moderator
+  gpt-5-mini:
+    id: openai/gpt-5-mini
+  grok-4.7:
+    id: spacexai/grok-4.7
+    notes: verified two-hop tool calling 2026-09-22; ~1.5s/call
+  grok-4.20-reasoning:
+    id: spacexai/grok-4.20-reasoning
+    notes: verified two-hop tool calling 2026-09-22; ~9s/call
+  qwen3.6-27b:
+    # Open-weight Qwen. Blocked on this team's gateway (alibaba/* returns 403
+    # "team has restricted access to this provider"). Two ways to enable:
+    #   1. team owner allows the `alibaba` provider in AI Gateway settings,
+    #      then set enabled: true
+    #   2. serve /shared/models/qwen3.8-27b-* with vLLM on a GPU node and
+    #      point base_url at it (vllm serve <path> --port 8000 ...)
+    id: alibaba/qwen3.6-27b
+    enabled: false
+    # base_url: http://<gpu-node>:8000/v1
+    # api_key_env: [VLLM_API_KEY]
