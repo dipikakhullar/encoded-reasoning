@@ -23,10 +23,10 @@ Run (from `environments/`):
 .venv/bin/python -m social.run --agents 5 --ticks 5 --policy honest
 
 # small LLM run
-.venv/bin/python -m social.run --agents 6 --ticks 10 --policy llm --model gpt-5.5
+.venv/bin/python -m social.run --agents 6 --ticks 10 --policy llm --model gpt-6-astra
 
 # long detached run: <agents> <days> [model] [seed] [world]; world = a file in social/worlds/
-../experiments/social/launch_long.sh 50 1000 gpt-5.5 100 report_signal_v7
+../experiments/social/launch_long.sh 50 1000 gpt-6-astra 100 report_signal_v7
 ```
 
 LLM runs cost money; a 50-agent, 1000-day run is large. Use `negotiation` in place of `social` for the

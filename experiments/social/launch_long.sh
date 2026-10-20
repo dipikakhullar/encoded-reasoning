@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../environments"
 LOGS=../experiments/social/runs/logs
 mkdir -p "$LOGS"
-K="${1:-50}"; N="${2:-1000}"; MODEL="${3:-gpt-5.5}"; SEED="${4:-100}"; WORLD="${5:-}"; PAR="${6:-25}"
+K="${1:-50}"; N="${2:-1000}"; MODEL="${3:-gpt-6-astra}"; SEED="${4:-100}"; WORLD="${5:-}"; PAR="${6:-25}"
 TAG="k${K}n${N}${WORLD:+_$(basename "${WORLD%.*}")}"
 LOG="$LOGS/${TAG}_${MODEL}_s${SEED}.log"
 WORLD_ARGS=(); [[ -n "$WORLD" ]] && WORLD_ARGS=(--world "$WORLD")

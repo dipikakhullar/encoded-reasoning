@@ -146,7 +146,7 @@ class Config:
 
     # agents
     policy: str = "random"               # random | honest | exaggerator | llm | mixed
-    model: str = "gpt-5.5"               # slug from models.yaml when policy == llm
+    model: str = "gpt-6-astra"               # slug from models.yaml when policy == llm
     reasoning_effort: str | None = None
     llm_parallel: int = 8
 

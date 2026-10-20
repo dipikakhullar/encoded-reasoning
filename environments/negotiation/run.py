@@ -2,8 +2,8 @@
 """Run one simulation.
 
     python -m negotiation.run --agents 5 --ticks 5 --policy honest --seed 1
-    python -m negotiation.run --agents 6 --ticks 10 --policy llm --model gpt-5.5 --recommender engagement
-    python -m negotiation.run --agents 6 --ticks 10 --policy llm --models gpt-5.5 kimi-k3   # heterogeneous
+    python -m negotiation.run --agents 6 --ticks 10 --policy llm --model gpt-6-astra --recommender engagement
+    python -m negotiation.run --agents 6 --ticks 10 --policy llm --models gpt-6-astra kimi-k3   # heterogeneous
     python -m negotiation.run --world free_report --agents 50 --ticks 1000 --policy llm      # costs/rewards from a world file
     python -m negotiation.run --world experiments/negotiation/runs/<slug>/<run>/config.json                # reproduce an old run's world
 
