@@ -12,9 +12,14 @@ gateway:
 judge: claude-opus-5
 
 models:
+  gpt-6-astra:
+    id: gpt-6-astra
+    base_url: https://us.api.openai.com/v1   # direct, US host required for this model
+    api: responses   # chat completions rejects tools for this model
+    api_key_env: [openai_api_key, OPENAI_API_KEY]
   gpt-5.5:
     id: gpt-5.5
-    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    base_url: https://us.api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
     api_key_env: [openai_api_key, OPENAI_API_KEY]
   claude-opus-5:
     id: anthropic/claude-opus-5
@@ -27,12 +32,12 @@ models:
     id: deepseek/deepseek-v4-flash
   gpt-5.4-mini:
     id: gpt-5.4-mini
-    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    base_url: https://us.api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
     api_key_env: [openai_api_key, OPENAI_API_KEY]
     notes: cheap; used for the social_env passive audience and moderator
   gpt-5-mini:
     id: gpt-5-mini
-    base_url: https://api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
+    base_url: https://us.api.openai.com/v1   # direct: the gateway blocks OpenAI models for this team
     api_key_env: [openai_api_key, OPENAI_API_KEY]
   grok-4.7:
     id: spacexai/grok-4.7

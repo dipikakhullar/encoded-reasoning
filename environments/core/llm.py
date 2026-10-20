@@ -55,6 +55,18 @@ class ToolCall:
     args: dict | None  # None when the model emitted invalid JSON
 
 
+def _tool_call(call_id: str | None, name: str, raw: str | None) -> ToolCall:
+    raw = raw or "{}"
+    try:
+        args = json.loads(raw)
+        if not isinstance(args, dict):
+            args = None
+    except json.JSONDecodeError:
+        args = None
+    return ToolCall(id=call_id or f"call_{uuid.uuid4().hex[:12]}",
+                    name=name, arguments_raw=raw, args=args)
+
+
 @dataclass
 class Reply:
     content: str | None
@@ -95,6 +107,7 @@ class LLM:
 
         self.slug = slug
         self.model_id = spec["id"]
+        self.api = spec.get("api", "chat")  # "responses" for models that only take tools via /v1/responses
         self.reasoning_effort = reasoning_effort
         self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self.calls = 0
@@ -103,17 +116,75 @@ class LLM:
         self.total_latency_s = 0.0
 
     def complete(self, messages: list[dict], tools: list[dict] | None) -> Reply:
+        if self.api == "responses":
+            return self._complete_responses(messages, tools)
         kwargs: dict = {"model": self.model_id, "messages": messages}
         if tools:
             kwargs["tools"] = tools
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
 
+        resp, latency = self._with_retries(self.client.chat.completions.create, kwargs)
+
+        choice = resp.choices[0].message
+        calls = [_tool_call(tc.id, tc.function.name, tc.function.arguments)
+                 for tc in choice.tool_calls or []]
+
+        usage = {}
+        if getattr(resp, "usage", None):
+            usage = {
+                "prompt_tokens": resp.usage.prompt_tokens,
+                "completion_tokens": resp.usage.completion_tokens,
+            }
+        return self._record(Reply(content=choice.content, tool_calls=calls,
+                                  usage=usage, latency_s=latency))
+
+    def _complete_responses(self, messages: list[dict], tools: list[dict] | None) -> Reply:
+        """Same contract as complete(), through /v1/responses. Chat-format history
+        is translated to input items each call (stateless, store=False)."""
+        items: list[dict] = []
+        for m in messages:
+            if m["role"] == "tool":
+                items.append({"type": "function_call_output", "call_id": m["tool_call_id"],
+                              "output": m.get("content") or ""})
+                continue
+            if m.get("content"):
+                items.append({"role": m["role"], "content": m["content"]})
+            for tc in m.get("tool_calls") or []:
+                items.append({"type": "function_call", "call_id": tc["id"],
+                              "name": tc["function"]["name"],
+                              "arguments": tc["function"]["arguments"]})
+        kwargs: dict = {"model": self.model_id, "input": items, "store": False}
+        if tools:
+            kwargs["tools"] = [{"type": "function", **t["function"]} for t in tools]
+        if self.reasoning_effort:
+            kwargs["reasoning"] = {"effort": self.reasoning_effort}
+
+        resp, latency = self._with_retries(self.client.responses.create, kwargs)
+
+        calls = [_tool_call(o.call_id, o.name, o.arguments)
+                 for o in resp.output if o.type == "function_call"]
+        usage = {}
+        if getattr(resp, "usage", None):
+            usage = {"prompt_tokens": resp.usage.input_tokens,
+                     "completion_tokens": resp.usage.output_tokens}
+        return self._record(Reply(content=resp.output_text or None, tool_calls=calls,
+                                  usage=usage, latency_s=latency))
+
+    def _record(self, reply: Reply) -> Reply:
+        self.prompt_tokens += reply.usage.get("prompt_tokens") or 0
+        self.completion_tokens += reply.usage.get("completion_tokens") or 0
+        self.calls += 1
+        self.total_latency_s += reply.latency_s
+        return reply
+
+    @staticmethod
+    def _with_retries(create, kwargs: dict):
         delay = 2.0
         for attempt in range(6):
             t0 = time.time()
             try:
-                resp = self.client.chat.completions.create(**kwargs)
+                resp = create(**kwargs)
                 break
             except Exception as exc:  # noqa: BLE001 - retry on transient errors
                 status = getattr(exc, "status_code", None)
@@ -123,35 +194,7 @@ class LLM:
                     raise
                 time.sleep(delay)
                 delay = min(delay * 2, 30)
-        latency = time.time() - t0
-
-        choice = resp.choices[0].message
-        calls: list[ToolCall] = []
-        for tc in choice.tool_calls or []:
-            raw = tc.function.arguments or "{}"
-            try:
-                args = json.loads(raw)
-                if not isinstance(args, dict):
-                    args = None
-            except json.JSONDecodeError:
-                args = None
-            calls.append(ToolCall(
-                id=tc.id or f"call_{uuid.uuid4().hex[:12]}",
-                name=tc.function.name, arguments_raw=raw, args=args,
-            ))
-
-        usage = {}
-        if getattr(resp, "usage", None):
-            usage = {
-                "prompt_tokens": resp.usage.prompt_tokens,
-                "completion_tokens": resp.usage.completion_tokens,
-            }
-            self.prompt_tokens += resp.usage.prompt_tokens or 0
-            self.completion_tokens += resp.usage.completion_tokens or 0
-        self.calls += 1
-        self.total_latency_s += latency
-        return Reply(content=choice.content, tool_calls=calls,
-                     usage=usage, latency_s=latency)
+        return resp, time.time() - t0
 
     def stats(self) -> dict:
         return {
