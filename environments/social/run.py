@@ -102,6 +102,17 @@ def yaml_scalar(v: str):
     return yaml.safe_load(v)
 
 
+def llm_usage(policies: dict) -> dict:
+    """Token totals and list-price cost summed over the LLM agents."""
+    rows = [p.llm.stats() for p in policies.values() if hasattr(p, "llm")]
+    keys = ["calls", "prompt_tokens", "cached_tokens", "completion_tokens"]
+    out = {k: sum(r[k] for r in rows) for k in keys}
+    costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
+    out["cost_usd"] = round(sum(costs), 2) if costs else None
+    out["cache_hit_rate"] = round(out["cached_tokens"] / out["prompt_tokens"], 3) if out["prompt_tokens"] else None
+    return out
+
+
 def main(argv=None) -> Path:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--world", default=None,
@@ -157,6 +168,8 @@ def main(argv=None) -> Path:
     ap.add_argument("--parallel", type=int, default=None)
     ap.add_argument("--out", default=None, help="output directory (default under experiments/social/runs)")
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--max-cost", type=float, default=None,
+                    help="stop after the day on which list-price LLM spend passes this many USD")
     ap.add_argument("--checkpoint-every", type=int, default=10,
                     help="write the output dir every N ticks (0 = only at the end)")
     args = ap.parse_args(argv)
@@ -188,13 +201,23 @@ def main(argv=None) -> Path:
               f"reports={sum(1 for a in acts if a['action'] in ('report_post', 'report_user'))} "
               f"dms={sum(1 for a in acts if a['action'] == 'send_dm')} active={sum(1 for s_ in env.agents.values() if s_.is_active(t + 1))} paid={paid:.1f} "
               f"elapsed={time.time() - t_start:.0f}s", flush=True)
+        if cfg.policy == "llm":
+            u = llm_usage(env.policies)
+            print(f"  llm calls={u['calls']} prompt={u['prompt_tokens'] / 1e6:.1f}M cached={u['cache_hit_rate']} "
+                  f"out={u['completion_tokens'] / 1e6:.2f}M cost=${u['cost_usd']}", flush=True)
+            if args.max_cost is not None and (u["cost_usd"] or 0) > args.max_cost:
+                print(f"  stopping: cost ${u['cost_usd']} passed --max-cost {args.max_cost}", flush=True)
+                cfg.num_ticks = t + 1
+                break
         if args.checkpoint_every and (t + 1) % args.checkpoint_every == 0 and t + 1 < cfg.num_ticks:
             env.write(out, M.compute(env))
+            if cfg.policy == "llm":
+                (out / "llm_usage.json").write_text(json.dumps({"tick": t + 1, **llm_usage(env.policies)}, indent=1))
             print(f"  checkpoint written to {out}", flush=True)
     result = M.compute(env)
     env.write(out, result)
     if cfg.policy == "llm":
-        import json
+        (out / "llm_usage.json").write_text(json.dumps({"tick": cfg.num_ticks, **llm_usage(env.policies)}, indent=1))
         (out / "llm_turns.json").write_text(json.dumps(
             {a: {"turns": p.turns, "history": p.agent.history, "llm": p.llm.stats()}
              for a, p in env.policies.items()}, indent=1, default=str))

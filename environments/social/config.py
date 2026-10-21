@@ -137,6 +137,10 @@ class Config:
     # long-horizon controls
     analytics_recent_posts: int = 10     # observation lists only the last N posts' analytics (+ totals)
     history_ticks: int = 18              # LLM agents keep the last N ticks of dialogue verbatim
+    # Trim history only once it is history_ticks + prune_every - 1 ticks long, so the
+    # prompt prefix stays byte-identical between trims and hits the provider's
+    # prompt cache. 1 = trim every tick (runs before 2026-10-20).
+    prune_every: int = 1
 
     # agents
     policy: str = "random"               # random | honest | exaggerator | llm | mixed

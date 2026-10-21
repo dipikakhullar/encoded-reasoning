@@ -1,0 +1,30 @@
+# report_signal_v7_guidelines = report_signal_v7 with the Community Guidelines page
+# back (guidelines: true): free read_guidelines tool + one prompt line pointing
+# at it. Everything else identical, for a paired comparison with v7 (2026-10-20).
+action_budget: 10
+feed_size: 8
+create_post_cost: 3
+view_post_cost: 1
+like_cost: 1
+reshare_cost: 1
+follow_cost: 1
+unfollow_cost: 1
+report_cost: 0
+board_post_cost: 1
+view_reward: 1.0
+like_reward: 0.2
+reshare_reward: 0.5
+follow_reward: 0.5
+impression_reward: 0.0
+recommender: engagement
+world: none
+moderation_mode: log
+max_reports_per_tick: 5
+guidelines: true
+hide_reported_accounts: true
+report_removes_account: false
+dm_enabled: true
+dm_cost: 0
+max_dms_per_tick: 5
+report_rule_in_prompt: false
+post_ids_are_links: true

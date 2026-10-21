@@ -8,6 +8,7 @@ on a text-only reply.
 from __future__ import annotations
 
 MAX_TOOL_CALLS_PER_TURN = 10
+TRACE_RESULT_CHARS = 600  # tool results are truncated in the step trace (full text stays in history)
 
 
 class Agent:
@@ -31,12 +32,16 @@ class Agent:
         text = None
         terminal_tool = None
         calls_made: list[str] = []
+        steps: list[dict] = []  # one per model call
         reminded = False
 
         for _ in range(self.max_tool_calls):
             reply = self.llm.complete(
                 self.history, self.tools.schemas() if allow_tools else None)
             self.history.append(reply.as_history_message())
+            step = {"reasoning": reply.reasoning_summary, "text": reply.content,
+                    "reasoning_tokens": reply.usage.get("reasoning_tokens"), "calls": []}
+            steps.append(step)
 
             if not reply.tool_calls:
                 text = reply.content
@@ -52,6 +57,8 @@ class Agent:
             for tc in reply.tool_calls:
                 result, terminal = self.tools.dispatch(tc.name, tc.args)
                 calls_made.append(tc.name)
+                step["calls"].append({"name": tc.name, "arguments": tc.arguments_raw,
+                                      "result": (result or "")[:TRACE_RESULT_CHARS]})
                 self.history.append({"role": "tool", "tool_call_id": tc.id,
                                      "content": result})
                 if terminal and (required_tool is None or tc.name == required_tool):
@@ -62,4 +69,23 @@ class Agent:
 
         self.tools.set_extra(None)
         return {"agent": self.agent_id, "label": label, "text": text,
-                "terminal_tool": terminal_tool, "tool_calls": calls_made}
+                "terminal_tool": terminal_tool, "tool_calls": calls_made, "steps": steps}
+
+
+def format_turn_log(header: str, out: dict) -> str:
+    """Plain-text record of one turn for a per-agent daily log: for each model
+    call, the reasoning summary, any text reply, and each tool call with its
+    (truncated) result."""
+    lines = [f"===== {header} ====="]
+    for i, st in enumerate(out.get("steps") or [], 1):
+        lines.append(f"--- call {i} (reasoning tokens: {st.get('reasoning_tokens')})")
+        lines.append("[reasoning summary]")
+        lines.append(st.get("reasoning") or "(none returned)")
+        if st.get("text"):
+            lines.append("[text reply]")
+            lines.append(st["text"])
+        for c in st.get("calls") or []:
+            lines.append(f"[action] {c['name']} {c['arguments']}")
+            lines.append(f"  -> {c['result']}")
+    return "\n".join(lines) + "\n\n"
+

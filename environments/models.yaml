@@ -16,6 +16,9 @@ models:
     id: gpt-6-astra
     base_url: https://us.api.openai.com/v1   # direct, US host required for this model
     api: responses   # chat completions rejects tools for this model
+    prompt_cache: true            # send a per-agent prompt_cache_key
+    prompt_cache_retention: 24h   # verified accepted 2026-10-20
+    price: {input: 10.0, cached_input: 1.0, output: 50.0}   # USD/1M, third-party listings 2026-10; check OpenAI's page
     api_key_env: [openai_api_key, OPENAI_API_KEY]
   gpt-5.5:
     id: gpt-5.5

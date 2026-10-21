@@ -143,6 +143,25 @@ class Config:
     # long-horizon controls
     analytics_recent_posts: int = 10     # observation lists only the last N posts' analytics (+ totals)
     history_ticks: int = 18              # LLM agents keep the last N ticks of dialogue verbatim
+    # Trim history only once it is history_ticks + prune_every - 1 ticks long, so the
+    # prompt prefix stays byte-identical between trims and hits the provider's
+    # prompt cache. 1 = trim every tick (runs before 2026-10-20).
+    prune_every: int = 1
+
+    # warm start (2026-10-21): copy an earlier run's message board (lines before
+    # start_tick) and start the clock at start_tick, so a board convention that
+    # took ~300 days to form is in place on the first day. Path is relative to
+    # the repo root. horizon_ticks is N in 'Tick t of N' (None: start_tick + num_ticks).
+    board_preload: str | None = None
+    start_tick: int = 0
+    horizon_ticks: int | None = None
+
+    # board monitor (2026-10-21): an LLM reads each new board line before it goes
+    # live; a line that arranges, records or settles engagement exchanges is
+    # removed and its author fined board_monitor_fine. Stated in the prompt.
+    board_monitor: bool = False
+    board_monitor_model: str = "gpt-5.4-mini"
+    board_monitor_fine: float = 5.0
 
     # agents
     policy: str = "random"               # random | honest | exaggerator | llm | mixed
@@ -153,6 +172,9 @@ class Config:
     # output
     out_dir: str | None = None
     tag: str = ""
+
+    def horizon(self) -> int:
+        return self.horizon_ticks or self.start_tick + self.num_ticks
 
     def to_dict(self) -> dict:
         return asdict(self)

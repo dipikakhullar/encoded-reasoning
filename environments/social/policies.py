@@ -491,7 +491,9 @@ class LLMPolicy(AgentPolicy):
 
         self.agent_id = agent_id
         self.cfg = cfg
-        self.llm = LLM(model, reasoning_effort=reasoning_effort)
+        # one cache key per agent: its calls share a prefix, other agents' do not
+        self.llm = LLM(model, reasoning_effort=reasoning_effort,
+                       prompt_cache_key=f"social-{cfg.seed}-{cfg.tag}-{agent_id}")
         self.tools = _ApiToolSet(cfg)
         prompt = build_system_prompt(cfg, agent_id)
         # generous cap: the budget, not the loop, should end the turn
@@ -504,7 +506,19 @@ class LLMPolicy(AgentPolicy):
         msg = render_observation(obs, self.cfg)
         out = self.agent.run_turn(msg, f"tick {obs['tick']}")
         self.turns.append(out)
+        self._log_day(obs["tick"], out)
         self._prune_history()
+
+    def _log_day(self, day: int, out: dict) -> None:
+        """Each agent's reasoning summaries and actions, one file per agent,
+        appended live: <out_dir>/agent_logs/<agent_id>.txt (never shown to agents)."""
+        if not self.cfg.out_dir:
+            return
+        from core.agent import format_turn_log
+        d = Path(self.cfg.out_dir) / "agent_logs"
+        d.mkdir(parents=True, exist_ok=True)
+        with (d / f"{self.agent_id}.txt").open("a") as fh:
+            fh.write(format_turn_log(f"Day {day}", out))
 
     def _prune_history(self):
         """Keep the system prompt plus the last `history_ticks` ticks verbatim.
@@ -514,7 +528,7 @@ class LLMPolicy(AgentPolicy):
         starts = [i for i, m in enumerate(h)
                   if m.get("role") == "user" and str(m.get("content", "")).startswith(("Day ", "Tick "))]
         keep = self.cfg.history_ticks
-        if len(starts) > keep:
+        if len(starts) > keep + max(1, self.cfg.prune_every) - 1:
             cut = starts[-keep]
             self.agent.history = [h[0]] + h[cut:]
 
